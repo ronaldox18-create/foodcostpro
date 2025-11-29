@@ -2,7 +2,8 @@ import React from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { AppProvider } from './contexts/AppContext';
-import Layout from './components/Layout'; 
+import { OrderNotificationProvider } from './contexts/OrderNotificationContext';
+import Layout from './components/Layout';
 
 import Dashboard from './pages/Dashboard';
 import Landing from './pages/Landing';
@@ -17,6 +18,16 @@ import Customers from './pages/Customers';
 import Orders from './pages/Orders';
 import Account from './pages/Account';
 import Tables from './pages/Tables'; // Nova Página
+import MenuManager from './pages/MenuManager';
+import Categories from './pages/Categories';
+import MenuOrders from './pages/MenuOrders';
+
+// Menu Pages
+import MenuLayout from './pages/Menu/MenuLayout';
+import StoreMenu from './pages/Menu/StoreMenu';
+import CustomerAuth from './pages/Menu/CustomerAuth';
+import CustomerProfile from './pages/Menu/CustomerProfile';
+import CustomerOrders from './pages/Menu/CustomerOrders';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
@@ -28,23 +39,44 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return !user ? <>{children}</> : <Navigate to="/dashboard" />;
 };
 
+// Layout para rotas privadas que precisam de notificação
+const PrivateLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  return (
+    <OrderNotificationProvider>
+      <PrivateRoute>{children}</PrivateRoute>
+    </OrderNotificationProvider>
+  );
+};
+
 const AppRoutes: React.FC = () => {
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/auth" element={<PublicRoute><Auth /></PublicRoute>} />
-      
-      <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-      <Route path="/tables" element={<PrivateRoute><Tables /></PrivateRoute>} /> 
-      <Route path="/orders" element={<PrivateRoute><Orders /></PrivateRoute>} />
-      <Route path="/customers" element={<PrivateRoute><Customers /></PrivateRoute>} />
-      <Route path="/products" element={<PrivateRoute><Products /></PrivateRoute>} />
-      <Route path="/ingredients" element={<PrivateRoute><Ingredients /></PrivateRoute>} />
-      <Route path="/inventory" element={<PrivateRoute><Inventory /></PrivateRoute>} />
-      <Route path="/expenses" element={<PrivateRoute><Expenses /></PrivateRoute>} />
-      <Route path="/settings" element={<PrivateRoute><Settings /></PrivateRoute>} />
-      <Route path="/advisor" element={<PrivateRoute><Advisor /></PrivateRoute>} />
-      <Route path="/account" element={<PrivateRoute><Account /></PrivateRoute>} />
+
+      {/* Public Menu Routes - REALMENTE SEM OrderNotificationProvider AGORA */}
+      <Route path="/menu/:storeId" element={<MenuLayout />}>
+        <Route index element={<StoreMenu />} />
+        <Route path="auth" element={<CustomerAuth />} />
+        <Route path="profile" element={<CustomerProfile />} />
+        <Route path="orders" element={<CustomerOrders />} />
+      </Route>
+
+      {/* Private Routes - WITH OrderNotificationProvider */}
+      <Route path="/dashboard" element={<PrivateLayout><Dashboard /></PrivateLayout>} />
+      <Route path="/tables" element={<PrivateLayout><Tables /></PrivateLayout>} />
+      <Route path="/orders" element={<PrivateLayout><Orders /></PrivateLayout>} />
+      <Route path="/customers" element={<PrivateLayout><Customers /></PrivateLayout>} />
+      <Route path="/products" element={<PrivateLayout><Products /></PrivateLayout>} />
+      <Route path="/categories" element={<PrivateLayout><Categories /></PrivateLayout>} />
+      <Route path="/menu-manager" element={<PrivateLayout><MenuManager /></PrivateLayout>} />
+      <Route path="/menu-orders" element={<PrivateLayout><MenuOrders /></PrivateLayout>} />
+      <Route path="/ingredients" element={<PrivateLayout><Ingredients /></PrivateLayout>} />
+      <Route path="/inventory" element={<PrivateLayout><Inventory /></PrivateLayout>} />
+      <Route path="/expenses" element={<PrivateLayout><Expenses /></PrivateLayout>} />
+      <Route path="/settings" element={<PrivateLayout><Settings /></PrivateLayout>} />
+      <Route path="/advisor" element={<PrivateLayout><Advisor /></PrivateLayout>} />
+      <Route path="/account" element={<PrivateLayout><Account /></PrivateLayout>} />
 
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>

@@ -72,11 +72,14 @@ export interface Customer {
   name: string;
   phone: string;
   email?: string;
+  password?: string; // Novo
   birthDate?: string;
   address?: string;
   notes?: string;
   totalSpent: number;
   lastOrderDate: string;
+  points?: number; // Novo
+  level?: 'bronze' | 'silver' | 'gold'; // Novo
 }
 
 export interface OrderItem {

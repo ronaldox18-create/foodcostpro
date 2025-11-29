@@ -6,7 +6,7 @@ import { calculateProductMetrics, formatCurrency, formatPercent } from '../utils
 import { askAI } from '../utils/aiHelper';
 
 const Products: React.FC = () => {
-  const { products, ingredients, fixedCosts, settings, addProduct, updateProduct, deleteProduct } = useApp();
+  const { products, ingredients, fixedCosts, settings, categories, addProduct, updateProduct, deleteProduct } = useApp();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -541,13 +541,16 @@ const Products: React.FC = () => {
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Categoria</label>
-                      <input
-                        type="text"
-                        placeholder="Ex: Lanches"
+                      <select
                         value={formData.category}
                         onChange={e => setFormData({ ...formData, category: e.target.value })}
                         className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none bg-white text-gray-900 transition"
-                      />
+                      >
+                        <option value="">Sem categoria</option>
+                        {categories.map(cat => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                      </select>
                     </div>
                   </div>
 
