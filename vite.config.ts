@@ -20,7 +20,7 @@ export default defineConfig(({ mode }) => {
       'process.env': {}
     },
     build: {
-      chunkSizeWarningLimit: 1600,
+      chunkSizeWarningLimit: 2000,
       rollupOptions: {
         output: {
           manualChunks(id) {
