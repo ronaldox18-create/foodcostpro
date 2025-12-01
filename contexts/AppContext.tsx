@@ -162,9 +162,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // --- Helpers de Estoque ---
   const handleStockUpdate = async (items: OrderItem[]) => {
-    console.log('📦 Iniciando baixa de estoque (Modo Seguro - Dados Frescos)...');
+    console.log('📦 ============ INICIANDO BAIXA DE ESTOQUE ============');
+    console.log('📦 Itens recebidos:', items);
+
+    if (!items || items.length === 0) {
+      console.warn('⚠️ Nenhum item para processar!');
+      return;
+    }
 
     for (const item of items) {
+      console.log(`\n🔷 Processando produto: ${item.productName} (ID: ${item.productId}) - Quantidade: ${item.quantity}`);
+
       // 1. Buscar receita atualizada diretamente do banco
       const { data: recipeData, error: recipeError } = await supabase
         .from('product_ingredients')
@@ -177,13 +185,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
 
       if (!recipeData || recipeData.length === 0) {
-        console.warn(`⚠️ Produto sem receita cadastrada no banco: ${item.productName}`);
+        console.warn(`⚠️ PRODUTO SEM RECEITA CADASTRADA: ${item.productName} (ID: ${item.productId})`);
+        console.warn(`   ⚠️ Para que o estoque seja baixado, cadastre a receita deste produto!`);
         continue;
       }
 
-      console.log(`🔍 Receita encontrada para ${item.productName}:`, recipeData);
+      console.log(`✅ Receita encontrada para ${item.productName}:`, recipeData.length, 'ingredientes');
 
       for (const recipeItem of recipeData) {
+        console.log(`\n  🔸 Processando ingrediente da receita:`, {
+          ingrediente_id: recipeItem.ingredient_id,
+          quantidade_usada: recipeItem.quantity_used,
+          unidade: recipeItem.unit_used
+        });
+
         // 2. Buscar ingrediente atualizado do banco
         const { data: ingredient, error: ingError } = await supabase
           .from('ingredients')
@@ -192,12 +207,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           .single();
 
         if (ingError || !ingredient) {
-          console.warn(`⚠️ Ingrediente não encontrado no banco: ${recipeItem.ingredient_id}`);
+          console.warn(`  ⚠️ Ingrediente não encontrado no banco: ${recipeItem.ingredient_id}`, ingError);
           continue;
         }
 
+        console.log(`  ✅ Ingrediente encontrado: ${ingredient.name}`);
+        console.log(`     Estoque atual: ${ingredient.current_stock} ${ingredient.purchase_unit}`);
+
         if (ingredient.current_stock === undefined || ingredient.current_stock === null) {
-          console.warn(`⚠️ Ingrediente sem controle de estoque: ${ingredient.name}`);
+          console.warn(`  ⚠️ Ingrediente sem controle de estoque:${ingredient.name}`);
           continue;
         }
 
@@ -209,18 +227,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         let qtyToDeduct = qtyUsed * item.quantity;
         let deduction = qtyToDeduct;
 
-        console.log(`🧮 Calculando conversão para ${ingredient.name}:`);
-        console.log(`   - Compra: ${pUnit}`);
-        console.log(`   - Uso: ${rUnit}`);
-        console.log(`   - Qtd Receita: ${qtyUsed}`);
-        console.log(`   - Qtd Pedido: ${item.quantity}`);
+        console.log(`  🧮 Calculando conversão:`);
+        console.log(`     - Unidade de Compra: ${pUnit}`);
+        console.log(`     - Unidade de Uso: ${rUnit}`);
+        console.log(`     - Qtd na Receita: ${qtyUsed} ${rUnit}`);
+        console.log(`     - Qtd do Pedido: ${item.quantity} unidade(s)`);
+        console.log(`     - Total a deduzir (antes conversão): ${qtyToDeduct} ${rUnit}`);
 
         // Conversão
         if ((pUnit === 'kg' && rUnit === 'g') || (pUnit === 'l' && rUnit === 'ml')) {
           deduction = qtyToDeduct / 1000;
+          console.log(`     - 🔄 Convertendo ${rUnit} → ${pUnit}: ${qtyToDeduct} / 1000 = ${deduction} ${pUnit}`);
         }
         else if ((pUnit === 'g' && rUnit === 'kg') || (pUnit === 'ml' && rUnit === 'l')) {
           deduction = qtyToDeduct * 1000;
+          console.log(`     - 🔄 Convertendo ${rUnit} → ${pUnit}: ${qtyToDeduct} * 1000 = ${deduction} ${pUnit}`);
+        } else {
+          console.log(`     - ✓ Sem conversão necessária (mesma unidade ou compatível)`);
         }
 
         const currentStock = ingredient.current_stock;
@@ -232,7 +255,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         // 3 casas é ideal para KG (0.001kg = 1g)
         const newStock = Math.round(rawNewStock * 1000) / 1000;
 
-        console.log(`📉 Baixando ${ingredient.name}: ${currentStock} -> ${newStock} (Deduzindo: ${deduction} ${pUnit})`);
+        console.log(`  📉 BAIXANDO ESTOQUE DE: ${ingredient.name}`);
+        console.log(`     ${currentStock} ${pUnit} - ${deduction} ${pUnit} = ${newStock} ${pUnit}`);
 
         // Atualiza no banco
         const { error: updateError } = await supabase
@@ -241,16 +265,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           .eq('id', ingredient.id);
 
         if (updateError) {
-          console.error(`❌ Erro ao atualizar estoque de ${ingredient.name}:`, updateError);
+          console.error(`  ❌ ERRO ao atualizar estoque de ${ingredient.name}:`, updateError);
         } else {
-          console.log(`✅ Estoque de ${ingredient.name} atualizado com sucesso!`);
+          console.log(`  ✅ SUCESSO! Estoque de ${ingredient.name} atualizado: ${currentStock} → ${newStock} ${pUnit}`);
           // Atualiza localmente para refletir na UI
           setIngredients(prev => prev.map(ing => ing.id === ingredient.id ? { ...ing, currentStock: newStock } : ing));
         }
       }
     }
-  };
 
+    console.log('\n📦 ============ FIM DA BAIXA DE ESTOQUE ============\n');
+  };
   // --- ACTIONS ---
 
   const addTable = async (number: number) => {
@@ -408,8 +433,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       // 4. Update Local State
       setOrders(prev => [{ ...order, id: orderId }, ...prev]);
 
-      // 5. BAIXAR ESTOQUE SE O PEDIDO JÁ NASCER CONCLUÍDO (Balcão)
-      if (order.status === 'completed') {
+      // 5. BAIXAR ESTOQUE
+      // - Pedidos de Balcão/Mesa que nascem 'completed' (já foi pago/fechado)
+      // - Pedidos de Balcão/Mesa que nascem 'open' (mesa em aberto)
+      // - Pedidos do Cardápio Virtual baixam quando mudam para 'confirmed'
+      if (order.status === 'completed' || order.status === 'open') {
+        console.log('📉 Baixando estoque na criação do pedido:', orderId, '- Status:', order.status);
         await handleStockUpdate(order.items);
       }
 

@@ -51,11 +51,9 @@ const Inventory: React.FC = () => {
         let itemsCount = ingredients.length;
 
         ingredients.forEach(ing => {
-            let multiplier = 1;
-            if (ing.purchaseUnit === 'kg' || ing.purchaseUnit === 'l') multiplier = 1000;
-
-            const pricePerBaseUnit = ing.purchasePrice / (ing.purchaseQuantity * multiplier);
-            const currentVal = (ing.currentStock || 0) * pricePerBaseUnit;
+            // Preço por unidade de estoque (assumindo que estoque está na mesma unidade de compra)
+            const pricePerUnit = ing.purchasePrice / ing.purchaseQuantity;
+            const currentVal = (ing.currentStock || 0) * pricePerUnit;
             totalValue += currentVal;
 
             if ((ing.currentStock || 0) <= (ing.minStock || 0)) {
@@ -70,10 +68,8 @@ const Inventory: React.FC = () => {
     const chartData = useMemo(() => {
         // Top 5 itens por valor total em estoque
         const valueData = ingredients.map(ing => {
-            let multiplier = 1;
-            if (ing.purchaseUnit === 'kg' || ing.purchaseUnit === 'l') multiplier = 1000;
-            const pricePerBaseUnit = ing.purchasePrice / (ing.purchaseQuantity * multiplier);
-            const totalVal = (ing.currentStock || 0) * pricePerBaseUnit;
+            const pricePerUnit = ing.purchasePrice / ing.purchaseQuantity;
+            const totalVal = (ing.currentStock || 0) * pricePerUnit;
             return { name: ing.name, value: totalVal };
         })
             .sort((a, b) => b.value - a.value)
@@ -108,10 +104,8 @@ const Inventory: React.FC = () => {
                 // Custom sorting for calculated fields
                 if (sortConfig.key === 'totalValue') {
                     const getVal = (ing: Ingredient) => {
-                        let multiplier = 1;
-                        if (ing.purchaseUnit === 'kg' || ing.purchaseUnit === 'l') multiplier = 1000;
-                        const pricePerBaseUnit = ing.purchasePrice / (ing.purchaseQuantity * multiplier);
-                        return (ing.currentStock || 0) * pricePerBaseUnit;
+                        const pricePerUnit = ing.purchasePrice / ing.purchaseQuantity;
+                        return (ing.currentStock || 0) * pricePerUnit;
                     };
                     aValue = getVal(a);
                     bValue = getVal(b);
@@ -141,24 +135,9 @@ const Inventory: React.FC = () => {
         setSortConfig({ key, direction });
     };
 
-    // --- CONVERSORES ---
-    const toBaseUnit = (val: number, unit: UnitType): number => {
-        if (unit === 'kg' || unit === 'l') return val * 1000;
-        return val;
-    };
-
-    const fromBaseUnit = (val: number, unit: UnitType): number => {
-        if (unit === 'kg' || unit === 'l') return val / 1000;
-        return val;
-    };
-
     // --- HELPERS ---
-    const formatStockDisplay = (valBase: number, unit: UnitType) => {
-        let valDisplay = valBase;
-        if (unit === 'kg' || unit === 'l') {
-            valDisplay = valBase / 1000;
-        }
-        return parseFloat(valDisplay.toFixed(2));
+    const formatStockDisplay = (val: number) => {
+        return parseFloat((val || 0).toFixed(3));
     };
 
     const formatUnitLabel = (unit: UnitType) => {
@@ -172,10 +151,12 @@ const Inventory: React.FC = () => {
     // --- HANDLERS ---
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+
+        // Mantém exatamente o valor digitado, sem conversões "escondidas"
         const dataToSave = {
             ...formData,
-            currentStock: toBaseUnit(formData.currentStock || 0, formData.purchaseUnit),
-            minStock: toBaseUnit(formData.minStock || 0, formData.purchaseUnit)
+            currentStock: formData.currentStock || 0,
+            minStock: formData.minStock || 0
         };
 
         if (editingId) {
@@ -194,17 +175,17 @@ const Inventory: React.FC = () => {
         const ingredient = ingredients.find(i => i.id === adjustment.id);
         if (!ingredient) return;
 
-        const currentBase = ingredient.currentStock || 0;
-        const adjustmentBase = toBaseUnit(adjustment.amount, ingredient.purchaseUnit);
+        const currentStock = ingredient.currentStock || 0;
+        const adjustmentAmount = adjustment.amount;
 
-        let newStockBase = currentBase;
+        let newStock = currentStock;
         if (adjustment.type === 'in') {
-            newStockBase += adjustmentBase;
+            newStock += adjustmentAmount;
         } else {
-            newStockBase = Math.max(0, currentBase - adjustmentBase);
+            newStock = Math.max(0, currentStock - adjustmentAmount);
         }
 
-        updateIngredient({ ...ingredient, currentStock: newStockBase });
+        updateIngredient({ ...ingredient, currentStock: newStock });
         setAdjustment(null);
     };
 
@@ -216,8 +197,8 @@ const Inventory: React.FC = () => {
     const handleEdit = (ing: Ingredient) => {
         setFormData({
             ...ing,
-            currentStock: parseFloat(fromBaseUnit(ing.currentStock || 0, ing.purchaseUnit).toFixed(2)),
-            minStock: parseFloat(fromBaseUnit(ing.minStock || 0, ing.purchaseUnit).toFixed(2))
+            currentStock: ing.currentStock || 0,
+            minStock: ing.minStock || 0
         });
         setEditingId(ing.id);
         setIsModalOpen(true);
@@ -231,9 +212,7 @@ const Inventory: React.FC = () => {
 
     // --- MODAL SIMPLIFIED VARS ---
     const adjustmentIngredient = adjustment ? ingredients.find(i => i.id === adjustment.id) : null;
-    const currentStockDisplay = adjustmentIngredient
-        ? formatStockDisplay(adjustmentIngredient.currentStock || 0, adjustmentIngredient.purchaseUnit)
-        : 0;
+    const currentStockDisplay = adjustmentIngredient ? (adjustmentIngredient.currentStock || 0) : 0;
 
     const predictedStockDisplay = adjustmentIngredient && adjustment
         ? (adjustment.type === 'in'
@@ -412,10 +391,8 @@ const Inventory: React.FC = () => {
                                 const unitLabel = formatUnitLabel(ing.purchaseUnit);
 
                                 // Calc Total Value
-                                let multiplier = 1;
-                                if (ing.purchaseUnit === 'kg' || ing.purchaseUnit === 'l') multiplier = 1000;
-                                const pricePerBaseUnit = ing.purchasePrice / (ing.purchaseQuantity * multiplier);
-                                const totalValue = (ing.currentStock || 0) * pricePerBaseUnit;
+                                const pricePerUnit = ing.purchasePrice / ing.purchaseQuantity;
+                                const totalValue = (ing.currentStock || 0) * pricePerUnit;
 
                                 return (
                                     <tr key={ing.id} className="hover:bg-gray-50/80 transition-colors group">
@@ -424,13 +401,13 @@ const Inventory: React.FC = () => {
                                                 <div className={`w-2 h-10 rounded-full ${isLow ? 'bg-red-500' : 'bg-green-500'}`}></div>
                                                 <div>
                                                     <p className="font-bold text-gray-900 text-base">{ing.name}</p>
-                                                    <p className="text-xs text-gray-400">Min: {formatStockDisplay(ing.minStock || 0, ing.purchaseUnit)} {unitLabel}</p>
+                                                    <p className="text-xs text-gray-400">Min: {formatStockDisplay(ing.minStock || 0)} {unitLabel}</p>
                                                 </div>
                                             </div>
                                         </td>
                                         <td className="px-6 py-4">
                                             <span className={`text-lg font-mono font-bold ${isLow ? 'text-red-600' : 'text-gray-700'}`}>
-                                                {formatStockDisplay(ing.currentStock || 0, ing.purchaseUnit)} {unitLabel}
+                                                {formatStockDisplay(ing.currentStock || 0)} {unitLabel}
                                             </span>
                                         </td>
                                         <td className="px-6 py-4">
@@ -449,7 +426,7 @@ const Inventory: React.FC = () => {
                                                 {formatCurrency(totalValue)}
                                             </div>
                                             <div className="text-xs text-gray-400">
-                                                {formatCurrency(pricePerBaseUnit * (ing.purchaseUnit === 'kg' || ing.purchaseUnit === 'l' ? 1000 : 1))} /{unitLabel}
+                                                {formatCurrency(pricePerUnit)} /{unitLabel}
                                             </div>
                                         </td>
                                         <td className="px-6 py-4">
@@ -546,6 +523,13 @@ const Inventory: React.FC = () => {
                                     <div className="relative">
                                         <input required type="number" step="0.001" value={formData.currentStock} onChange={e => setFormData({ ...formData, currentStock: parseFloat(e.target.value) })} className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none transition-all" />
                                     </div>
+                                    {/* Alerta inteligente para valores altos em KG/L */}
+                                    {((formData.purchaseUnit === 'kg' || formData.purchaseUnit === 'l') && (formData.currentStock || 0) > 100) && (
+                                        <p className="text-xs text-orange-600 mt-1 flex items-start gap-1">
+                                            <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+                                            <span>Atenção: Você digitou {formData.currentStock} {formData.purchaseUnit}. Se quis dizer {formData.currentStock} gramas/ml, use {formData.currentStock / 1000} {formData.purchaseUnit}.</span>
+                                        </p>
+                                    )}
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Estoque Mínimo ({formData.purchaseUnit})</label>
@@ -615,6 +599,13 @@ const Inventory: React.FC = () => {
                                         placeholder="0"
                                     />
                                 </div>
+                                {/* Alerta inteligente para valores altos em KG/L no ajuste rápido */}
+                                {((adjustmentIngredient.purchaseUnit === 'kg' || adjustmentIngredient.purchaseUnit === 'l') && (adjustment.amount || 0) > 100) && (
+                                    <p className="text-xs text-orange-600 mt-2 text-center">
+                                        ⚠️ Atenção: {adjustment.amount} {adjustmentIngredient.purchaseUnit} é muita coisa!
+                                        <br />Se quis dizer gramas/ml, use {adjustment.amount / 1000}.
+                                    </p>
+                                )}
                             </div>
 
                             <button type="submit" className={`w-full py-4 font-black rounded-xl text-white text-lg shadow-lg transform active:scale-95 transition-all ${adjustment.type === 'in' ? 'bg-green-600 hover:bg-green-700 shadow-green-200' : 'bg-red-600 hover:bg-red-700 shadow-red-200'}`}>

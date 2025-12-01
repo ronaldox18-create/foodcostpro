@@ -3,7 +3,7 @@ import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, ShoppingBasket, ChefHat, Settings, Menu, Landmark, Users, ClipboardList, Boxes, Sparkles, LogOut, User as UserIcon, LayoutGrid, Smartphone, Tag, PackageCheck } from 'lucide-react';
+import { LayoutDashboard, ShoppingBasket, ChefHat, Settings, Menu, Landmark, Users, ClipboardList, Boxes, Sparkles, LogOut, User as UserIcon, LayoutGrid, Smartphone, Tag, PackageCheck, Clock } from 'lucide-react';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -62,8 +62,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Gestão</p>
           </div>
           <NavItem to="/dashboard" icon={LayoutDashboard} label="Dashboard" active={location.pathname === '/dashboard'} />
-          <NavItem to="/tables" icon={LayoutGrid} label="Mesas (Salão)" active={location.pathname === '/tables'} />
-          <NavItem to="/orders" icon={ClipboardList} label="Pedidos (PDV)" active={location.pathname === '/orders'} />
+          <NavItem to="/all-orders" icon={ClipboardList} label="Todos os Pedidos" active={location.pathname === '/all-orders'} />
           <NavItem to="/customers" icon={Users} label="Clientes (CRM)" active={location.pathname === '/customers'} />
 
           <div className="pt-6 pb-2 px-2">
@@ -72,7 +71,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           <NavItem to="/products" icon={Menu} label="Cardápio" active={location.pathname === '/products'} />
           <NavItem to="/categories" icon={Tag} label="Categorias" active={location.pathname === '/categories'} />
           <NavItem to="/menu-manager" icon={Smartphone} label="Cardápio Virtual" active={location.pathname === '/menu-manager'} />
-          <NavItem to="/menu-orders" icon={PackageCheck} label="Pedidos (Cardápio)" active={location.pathname === '/menu-orders'} />
           <NavItem to="/inventory" icon={Boxes} label="Estoque" active={location.pathname === '/inventory'} />
           <NavItem to="/ingredients" icon={ShoppingBasket} label="Ingredientes" active={location.pathname === '/ingredients'} />
           <NavItem to="/expenses" icon={Landmark} label="Despesas Fixas" active={location.pathname === '/expenses'} />
@@ -82,6 +80,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           </div>
           <NavItem to="/account" icon={UserIcon} label="Minha Conta" active={location.pathname === '/account'} />
           <NavItem to="/settings" icon={Settings} label="Configurações" active={location.pathname === '/settings'} />
+          <NavItem to="/business-hours" icon={Clock} label="Horários" active={location.pathname === '/business-hours'} />
         </nav>
 
         <div className="p-4 border-t border-gray-100 bg-gray-50/50">
@@ -117,8 +116,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-2">
               <NavItem to="/dashboard" icon={LayoutDashboard} label="Dashboard" active={location.pathname === '/dashboard'} />
-              <NavItem to="/tables" icon={LayoutGrid} label="Mesas" active={location.pathname === '/tables'} />
-              <NavItem to="/orders" icon={ClipboardList} label="Pedidos" active={location.pathname === '/orders'} />
+              <NavItem to="/all-orders" icon={ClipboardList} label="Todos os Pedidos" active={location.pathname === '/all-orders'} />
               <NavItem to="/customers" icon={Users} label="Clientes" active={location.pathname === '/customers'} />
               <NavItem to="/products" icon={Menu} label="Cardápio" active={location.pathname === '/products'} />
               <NavItem to="/categories" icon={Tag} label="Categorias" active={location.pathname === '/categories'} />
@@ -128,6 +126,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               <NavItem to="/expenses" icon={Landmark} label="Despesas" active={location.pathname === '/expenses'} />
               <NavItem to="/account" icon={UserIcon} label="Minha Conta" active={location.pathname === '/account'} />
               <NavItem to="/settings" icon={Settings} label="Configurações" active={location.pathname === '/settings'} />
+              <NavItem to="/business-hours" icon={Clock} label="Horários" active={location.pathname === '/business-hours'} />
               <button onClick={signOut} className="w-full text-left p-4 text-red-600 font-medium">Sair</button>
             </div>
           </div>

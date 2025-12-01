@@ -17,11 +17,13 @@ import {
     CalendarCheck,
     Megaphone,
     MessageCircle,
-    Info
+    Info,
+    CheckCircle
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatCurrency } from '../utils/calculations';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
+import BusinessHoursWidget from '../components/BusinessHoursWidget';
 
 const Dashboard: React.FC = () => {
     const { orders, ingredients, products, customers, settings } = useApp();
@@ -827,12 +829,14 @@ const Dashboard: React.FC = () => {
                         </CardContent>
                     </Card>
 
+                    {/* Widget de Horários de Funcionamento */}
+                    <BusinessHoursWidget />
 
                 </div>
             </div>
         </div>
     );
 };
-import { CheckCircle } from 'lucide-react';
 
 export default Dashboard;
+

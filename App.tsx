@@ -21,6 +21,8 @@ import Tables from './pages/Tables'; // Nova Página
 import MenuManager from './pages/MenuManager';
 import Categories from './pages/Categories';
 import MenuOrders from './pages/MenuOrders';
+import AllOrders from './pages/AllOrders'; // Nova Página Unificada
+import BusinessHoursAdvanced from './pages/BusinessHoursAdvanced'; // Horários de Funcionamento Avançado
 
 // Menu Pages
 import MenuLayout from './pages/Menu/MenuLayout';
@@ -66,6 +68,7 @@ const AppRoutes: React.FC = () => {
       <Route path="/dashboard" element={<PrivateLayout><Dashboard /></PrivateLayout>} />
       <Route path="/tables" element={<PrivateLayout><Tables /></PrivateLayout>} />
       <Route path="/orders" element={<PrivateLayout><Orders /></PrivateLayout>} />
+      <Route path="/all-orders" element={<PrivateLayout><AllOrders /></PrivateLayout>} />
       <Route path="/customers" element={<PrivateLayout><Customers /></PrivateLayout>} />
       <Route path="/products" element={<PrivateLayout><Products /></PrivateLayout>} />
       <Route path="/categories" element={<PrivateLayout><Categories /></PrivateLayout>} />
@@ -75,6 +78,7 @@ const AppRoutes: React.FC = () => {
       <Route path="/inventory" element={<PrivateLayout><Inventory /></PrivateLayout>} />
       <Route path="/expenses" element={<PrivateLayout><Expenses /></PrivateLayout>} />
       <Route path="/settings" element={<PrivateLayout><Settings /></PrivateLayout>} />
+      <Route path="/business-hours" element={<PrivateLayout><BusinessHoursAdvanced /></PrivateLayout>} />
       <Route path="/advisor" element={<PrivateLayout><Advisor /></PrivateLayout>} />
       <Route path="/account" element={<PrivateLayout><Account /></PrivateLayout>} />
 

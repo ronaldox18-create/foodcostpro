@@ -92,7 +92,7 @@ export const OrderNotificationProvider: React.FC<{ children: React.ReactNode }> 
                 },
                 async (payload) => {
                     console.log('🎉🎉🎉 NEW ORDER RECEIVED IN GLOBAL CONTEXT!', payload);
-                    const basicOrder = payload.new as Order;
+                    const basicOrder = payload.new as any;
 
                     // Avoid duplicate notifications
                     if (lastOrderIdRef.current === basicOrder.id) {
@@ -101,11 +101,19 @@ export const OrderNotificationProvider: React.FC<{ children: React.ReactNode }> 
                     }
                     lastOrderIdRef.current = basicOrder.id;
 
-                    console.log('📢 Processing new order:', {
+                    // IMPORTANTE: Só mostrar popup para pedidos do CARDÁPIO VIRTUAL
+                    // Pedidos de mesa NÃO devem mostrar popup
+                    if (!basicOrder.delivery_type) {
+                        console.log('⏭️ PEDIDO DE MESA - Popup não exibido (delivery_type ausente)');
+                        return;
+                    }
+
+                    console.log('📢 Processing new order from VIRTUAL MENU:', {
                         id: basicOrder.id,
                         customer: basicOrder.customer_name,
                         amount: basicOrder.total_amount,
-                        status: basicOrder.status
+                        status: basicOrder.status,
+                        delivery_type: basicOrder.delivery_type
                     });
 
                     // Fetch complete order data with items

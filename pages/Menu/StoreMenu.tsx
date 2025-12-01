@@ -1,10 +1,11 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../utils/supabaseClient';
-import { Product } from '../../types';
+import { Product, BusinessHours, SpecialHours, StoreStatus } from '../../types';
 import { formatCurrency } from '../../utils/calculations';
-import { Search, Plus, Minus, ShoppingCart, Star, X, Trash2, ArrowRight, CheckCircle } from 'lucide-react';
+import { Search, Plus, Minus, ShoppingCart, Star, X, Trash2, ArrowRight, CheckCircle, Clock } from 'lucide-react';
 import CheckoutModal, { CheckoutData } from '../../components/CheckoutModal';
+import { checkStoreStatus } from '../../utils/businessHours';
 
 const StoreMenu: React.FC = () => {
     const { storeId } = useParams();
@@ -20,6 +21,7 @@ const StoreMenu: React.FC = () => {
     const [showCheckoutModal, setShowCheckoutModal] = useState(false);
     const [checkoutSuccess, setCheckoutSuccess] = useState(false);
     const [customerData, setCustomerData] = useState<{ phone?: string; address?: string }>({});
+    const [storeStatus, setStoreStatus] = useState<StoreStatus | null>(null);
 
     useEffect(() => {
         if (!storeId) return;
@@ -34,6 +36,24 @@ const StoreMenu: React.FC = () => {
 
                 if (settingsData?.business_name) {
                     setStoreName(settingsData.business_name);
+                }
+
+                // Buscar horários de funcionamento
+                const { data: hoursData } = await supabase
+                    .from('business_hours')
+                    .select('*')
+                    .eq('user_id', storeId);
+
+                // Buscar horários especiais
+                const { data: specialData } = await supabase
+                    .from('special_hours')
+                    .select('*')
+                    .eq('user_id', storeId)
+                    .gte('date', new Date().toISOString().split('T')[0]);
+
+                if (hoursData && hoursData.length > 0) {
+                    const status = checkStoreStatus(hoursData, specialData || []);
+                    setStoreStatus(status);
                 }
 
                 const { data: productsData } = await supabase
@@ -264,18 +284,45 @@ const StoreMenu: React.FC = () => {
                 <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
 
                 <div className="relative z-10">
-                    <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center text-2xl">
-                            🍽️
+                    <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center text-2xl">
+                                🍽️
+                            </div>
+                            <div>
+                                <h1 className="text-xl font-black tracking-tight">{storeName}</h1>
+                                <p className="text-white/90 text-xs flex items-center gap-1">
+                                    <Star size={12} fill="currentColor" />
+                                    Peça online agora
+                                </p>
+                            </div>
                         </div>
-                        <div>
-                            <h1 className="text-xl font-black tracking-tight">{storeName}</h1>
-                            <p className="text-white/90 text-xs flex items-center gap-1">
-                                <Star size={12} fill="currentColor" />
-                                Peça online agora
-                            </p>
-                        </div>
+
+                        {/* Status Badge */}
+                        {storeStatus && (
+                            <div className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 backdrop-blur-sm ${storeStatus.isOpen
+                                    ? 'bg-green-500/90 text-white'
+                                    : storeStatus.reason === 'pause'
+                                        ? 'bg-orange-500/90 text-white'
+                                        : 'bg-gray-900/80 text-white'
+                                }`}>
+                                <Clock size={14} />
+                                {storeStatus.isOpen
+                                    ? 'Aberto'
+                                    : storeStatus.reason === 'pause'
+                                        ? 'Em Pausa'
+                                        : 'Fechado'}
+                            </div>
+                        )}
                     </div>
+
+                    {/* Status Message */}
+                    {storeStatus && (
+                        <div className="mt-3 text-white/90 text-xs font-medium flex items-center gap-1.5">
+                            <Clock size={12} />
+                            {storeStatus.message}
+                        </div>
+                    )}
                 </div>
             </div>
 
