@@ -3,7 +3,7 @@ import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, ShoppingBasket, ChefHat, Settings, Menu, Landmark, Users, ClipboardList, Boxes, Sparkles, LogOut, User as UserIcon, LayoutGrid, Smartphone, Tag, PackageCheck, Clock } from 'lucide-react';
+import { LayoutDashboard, ShoppingBasket, ChefHat, Settings, Menu, Landmark, Users, ClipboardList, Boxes, Sparkles, LogOut, User as UserIcon, LayoutGrid, Smartphone, Tag, PackageCheck, Clock, Crown } from 'lucide-react';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -81,6 +81,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           <NavItem to="/account" icon={UserIcon} label="Minha Conta" active={location.pathname === '/account'} />
           <NavItem to="/settings" icon={Settings} label="Configurações" active={location.pathname === '/settings'} />
           <NavItem to="/business-hours" icon={Clock} label="Horários" active={location.pathname === '/business-hours'} />
+          <NavItem to="/loyalty-settings" icon={Crown} label="Programa de Fidelidade" active={location.pathname === '/loyalty-settings'} />
         </nav>
 
         <div className="p-4 border-t border-gray-100 bg-gray-50/50">
@@ -127,6 +128,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               <NavItem to="/account" icon={UserIcon} label="Minha Conta" active={location.pathname === '/account'} />
               <NavItem to="/settings" icon={Settings} label="Configurações" active={location.pathname === '/settings'} />
               <NavItem to="/business-hours" icon={Clock} label="Horários" active={location.pathname === '/business-hours'} />
+              <NavItem to="/loyalty-settings" icon={Crown} label="Programa de Fidelidade" active={location.pathname === '/loyalty-settings'} />
               <button onClick={signOut} className="w-full text-left p-4 text-red-600 font-medium">Sair</button>
             </div>
           </div>

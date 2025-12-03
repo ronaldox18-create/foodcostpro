@@ -44,9 +44,10 @@ export const useOrderNotification = () => {
 export const OrderNotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const { user } = useAuth();
     // Safe to use useApp here because OrderNotificationProvider is inside AppProvider in App.tsx
-    const { handleStockUpdate } = useApp();
+    const { handleStockUpdate, checkStockAvailability } = useApp();
 
     const [newOrder, setNewOrder] = useState<Order | null>(null);
+    const [isProcessing, setIsProcessing] = useState(false); // Prevenir duplo clique
     const lastOrderIdRef = useRef<string | null>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
 
@@ -257,8 +258,35 @@ export const OrderNotificationProvider: React.FC<{ children: React.ReactNode }> 
     };
 
     const handleAcceptOrder = async (orderId: string) => {
+        if (isProcessing) {
+            console.log('⏸️ Already processing order, ignoring duplicate click');
+            return;
+        }
+
         console.log('✅ Accepting order:', orderId);
+        setIsProcessing(true);
+
         try {
+            // 1. Verificar estoque ANTES de aceitar
+            const order = newOrder?.id === orderId ? newOrder : null;
+            if (order && order.items && order.items.length > 0) {
+                const itemsToCheck = order.items.map(item => ({
+                    productId: item.product_id,
+                    productName: item.product_name,
+                    quantity: item.quantity,
+                    unitPrice: item.price,
+                    total: item.total
+                }));
+
+                const { available, missingItems } = await checkStockAvailability(itemsToCheck);
+
+                if (!available) {
+                    alert(`⚠️ NÃO É POSSÍVEL ACEITAR O PEDIDO!\n\nEstoque insuficiente para:\n${missingItems.join('\n')}\n\nPor favor, reponha o estoque ou cancele o pedido.`);
+                    setIsProcessing(false);
+                    return;
+                }
+            }
+
             const { error } = await supabase
                 .from('orders')
                 .update({ status: 'confirmed' })
@@ -267,7 +295,6 @@ export const OrderNotificationProvider: React.FC<{ children: React.ReactNode }> 
             if (error) throw error;
 
             // BAIXAR ESTOQUE
-            const order = newOrder?.id === orderId ? newOrder : null;
             if (order && order.items && order.items.length > 0) {
                 console.log('📉 Updating stock for accepted order items...');
                 const itemsToDeduct = order.items.map(item => ({
@@ -285,11 +312,20 @@ export const OrderNotificationProvider: React.FC<{ children: React.ReactNode }> 
         } catch (error) {
             console.error('❌ Error accepting order:', error);
             alert('Erro ao aceitar pedido');
+        } finally {
+            setIsProcessing(false);
         }
     };
 
     const handleRejectOrder = async (orderId: string) => {
+        if (isProcessing) {
+            console.log('⏸️ Already processing order, ignoring duplicate click');
+            return;
+        }
+
         console.log('❌ Rejecting order:', orderId);
+        setIsProcessing(true);
+
         try {
             const { error } = await supabase
                 .from('orders')
@@ -302,6 +338,8 @@ export const OrderNotificationProvider: React.FC<{ children: React.ReactNode }> 
         } catch (error) {
             console.error('❌ Error rejecting order:', error);
             alert('Erro ao rejeitar pedido');
+        } finally {
+            setIsProcessing(false);
         }
     };
 

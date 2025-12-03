@@ -72,25 +72,31 @@ export interface Customer {
   name: string;
   phone: string;
   email?: string;
-  password?: string; // Novo
+  password?: string;
   birthDate?: string;
   address?: string;
   notes?: string;
   totalSpent: number;
   lastOrderDate: string;
-  points?: number; // Novo
-  level?: 'bronze' | 'silver' | 'gold'; // Novo
+  points?: number;
+  currentLevel?: string; // ID do nível atual
+  levelExpiresAt?: string; // Data de expiração do nível
+  lastLevelUpdate?: string; // Última vez que o nível foi atualizado
 }
 
 export interface OrderItem {
+  id?: string;
   productId: string;
   productName: string;
   quantity: number;
   unitPrice: number;
   total: number;
+  addedAt?: string;
 }
 
 export type PaymentMethod = 'credit' | 'debit' | 'money' | 'pix';
+
+export type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'completed' | 'canceled' | 'open';
 
 export interface Order {
   id: string;
@@ -100,9 +106,15 @@ export interface Order {
   totalAmount: number;
   paymentMethod: PaymentMethod;
   date: string;
-  status: 'pending' | 'completed' | 'canceled' | 'open'; // 'open' para mesa aberta
-  tableId?: string; // Novo
-  tableNumber?: number; // Novo
+  status: OrderStatus;
+  tableId?: string;
+  tableNumber?: number;
+  notes?: string;
+  deliveryType?: 'delivery' | 'pickup';
+  deliveryAddress?: string;
+  phone?: string;
+  delivery_type?: 'delivery' | 'pickup';
+  delivery_address?: string;
 }
 
 // --- NOVO: Sistema de Mesas ---
@@ -189,5 +201,74 @@ export interface StoreStatus {
   };
   serviceType?: ServiceType;
   specialEvent?: string; // Nome do evento especial, se houver
+}
+
+// --- Sistema de Fidelidade e Pontos ---
+
+/**
+ * Nível de fidelidade configurável
+ */
+export interface LoyaltyLevel {
+  id: string;
+  user_id: string;
+  name: string; // Ex: "Bronze", "Prata", "Ouro", "Diamante"
+  pointsRequired: number; // Pontos necessários para alcançar este nível
+  discountPercent: number; // Desconto em % que este nível oferece
+  color: string; // Cor para exibição (hex)
+  icon?: string; // Emoji ou ícone
+  benefits?: string; // Descrição dos benefícios
+  order: number; // Ordem de exibição (1, 2, 3...)
+  created_at?: string;
+}
+
+/**
+ * Configurações do programa de fidelidade
+ */
+export interface LoyaltySettings {
+  id: string;
+  user_id: string;
+  isEnabled: boolean; // Ativar/desativar o sistema de pontos
+
+  // Configuração de pontos
+  pointsPerReal: number; // Quantos pontos o cliente ganha por R$ 1,00 gasto
+
+  // Configuração de expiração de nível
+  levelExpirationEnabled: boolean; // Se true, níveis expiram
+  levelExpirationDays: number; // Dias sem compra para cair de nível
+
+  // Configuração de resgate
+  enablePointsRedemption: boolean; // Permitir trocar pontos por desconto
+  pointsToRealRate: number; // Quantos pontos = R$ 1,00 de desconto
+  minPointsToRedeem: number; // Mínimo de pontos para resgatar
+
+  created_at?: string;
+  updated_at?: string;
+}
+
+/**
+ * Histórico de pontos do cliente
+ */
+export interface PointsHistory {
+  id: string;
+  user_id: string;
+  customer_id: string;
+  points: number; // Positivo = ganhou, Negativo = gastou
+  type: 'earned' | 'redeemed' | 'expired' | 'adjusted'; // Tipo de transação
+  description: string; // Ex: "Compra de R$ 50,00", "Resgate de desconto"
+  order_id?: string; // Referência ao pedido, se aplicável
+  created_at: string;
+}
+
+/**
+ * Histórico de mudanças de nível
+ */
+export interface LevelHistory {
+  id: string;
+  user_id: string;
+  customer_id: string;
+  from_level_id?: string; // Nível anterior (null se é o primeiro)
+  to_level_id: string; // Novo nível
+  reason: 'points_earned' | 'expired' | 'manual'; // Motivo da mudança
+  created_at: string;
 }
 

@@ -144,7 +144,7 @@ const BusinessHoursWidget: React.FC = () => {
                     {businessHours.map((hours) => {
                         const isToday = hours.day_of_week === new Date().getDay();
                         return (
-                            <div key={hours.day_of_week} className="flex items-center justify-between text-xs">
+                            <div key={hours.id} className="flex items-center justify-between text-xs">
                                 <span className={`font-medium w-24 ${isToday ? 'text-orange-600 font-bold' : 'text-gray-600'}`}>
                                     {getDayName(hours.day_of_week).slice(0, 3)}
                                 </span>

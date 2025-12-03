@@ -41,6 +41,8 @@ interface AppContextType {
 
   updateSettings: (settings: AppSettings) => Promise<void>;
   handleStockUpdate: (items: OrderItem[]) => Promise<void>;
+  checkStockAvailability: (items: OrderItem[]) => Promise<{ available: boolean; missingItems: string[] }>;
+  fixTableStatuses: () => Promise<void>;
 }
 
 const defaultSettings: AppSettings = {
@@ -109,8 +111,29 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const { data: orderData } = await supabase.from('orders').select(`*, order_items (*)`).eq('user_id', user.id).order('date', { ascending: false });
         if (orderData) {
           const formattedOrders = orderData.map(o => ({
-            id: o.id, customerId: o.customer_id || 'guest', customerName: o.customer_name, totalAmount: o.total_amount, paymentMethod: o.payment_method, status: o.status, date: o.date, tableId: o.table_id, tableNumber: o.table_number,
-            items: o.order_items.map((oi: any) => ({ productId: oi.product_id, productName: oi.product_name, quantity: oi.quantity, unitPrice: oi.unit_price, total: oi.total }))
+            id: o.id,
+            customerId: o.customer_id || 'guest',
+            customerName: o.customer_name,
+            totalAmount: o.total_amount,
+            paymentMethod: o.payment_method,
+            status: o.status,
+            date: o.date,
+            tableId: o.table_id,
+            tableNumber: o.table_number,
+            notes: o.notes,
+            deliveryType: o.delivery_type,
+            deliveryAddress: o.delivery_address,
+            phone: o.phone,
+            delivery_type: o.delivery_type,
+            delivery_address: o.delivery_address,
+            items: o.order_items.map((oi: any) => ({
+              productId: oi.product_id,
+              productName: oi.product_name,
+              quantity: oi.quantity,
+              unitPrice: oi.price,
+              total: oi.total,
+              addedAt: oi.added_at || new Date().toISOString()
+            }))
           }));
           setOrders(formattedOrders);
         }
@@ -160,122 +183,202 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   }, [orders]);
 
-  // --- Helpers de Estoque ---
-  const handleStockUpdate = async (items: OrderItem[]) => {
-    console.log('📦 ============ INICIANDO BAIXA DE ESTOQUE ============');
-    console.log('📦 Itens recebidos:', items);
+  // --- Helper de Conversão de Unidades ---
+  const convertToStockUnit = (recipeAmount: number, recipeUnit: string, stockUnit: string): number => {
+    // Se as unidades são iguais, retorna direto
+    if (recipeUnit === stockUnit) return recipeAmount;
 
-    if (!items || items.length === 0) {
-      console.warn('⚠️ Nenhum item para processar!');
-      return;
-    }
+    // Conversões de peso
+    if (recipeUnit === 'g' && stockUnit === 'kg') return recipeAmount / 1000;
+    if (recipeUnit === 'kg' && stockUnit === 'g') return recipeAmount * 1000;
+
+    // Conversões de volume
+    if (recipeUnit === 'ml' && stockUnit === 'l') return recipeAmount / 1000;
+    if (recipeUnit === 'l' && stockUnit === 'ml') return recipeAmount * 1000;
+
+    // Se não há conversão conhecida, retorna o valor original e alerta
+    console.warn(`⚠️ Conversão não suportada: ${recipeUnit} → ${stockUnit}`);
+    return recipeAmount;
+  };
+
+  // --- Verificação de Estoque ---
+  const checkStockAvailability = async (items: OrderItem[]): Promise<{ available: boolean; missingItems: string[] }> => {
+    const missingItems: string[] = [];
+
+    if (!items || items.length === 0) return { available: true, missingItems: [] };
+
+    // Mapa para acumular o consumo total de cada ingrediente no pedido
+    // Chave: ingredientId, Valor: quantidade total necessária na unidade de estoque
+    const ingredientConsumption = new Map<string, number>();
 
     for (const item of items) {
-      console.log(`\n🔷 Processando produto: ${item.productName} (ID: ${item.productId}) - Quantidade: ${item.quantity}`);
+      // Buscar produto e receita (usando o estado local para ser mais rápido e evitar muitas requisições, 
+      // mas idealmente deveria ser do banco para garantir consistência. Vamos usar o banco para garantir.)
+      // Na verdade, usar o estado local 'products' e 'ingredients' é mais rápido e já deve estar sincronizado.
+      // Mas para garantir que não estamos vendendo algo que acabou de acabar, vamos consultar o banco ou confiar no estado local se ele for realtime.
+      // O estado local é atualizado após cada ação, então deve estar ok.
 
-      // 1. Buscar receita atualizada diretamente do banco
-      const { data: recipeData, error: recipeError } = await supabase
-        .from('product_ingredients')
-        .select('*')
-        .eq('product_id', item.productId);
+      // Vamos usar o banco para ter certeza absoluta do estoque atual.
 
-      if (recipeError) {
-        console.error(`❌ Erro ao buscar receita de ${item.productName}:`, recipeError);
-        continue;
-      }
+      const { data: productData } = await supabase
+        .from('products')
+        .select(`
+            id,
+            name,
+            product_ingredients (
+              ingredient_id,
+              quantity_used,
+              unit_used
+            )
+          `)
+        .eq('id', item.productId)
+        .single();
 
-      if (!recipeData || recipeData.length === 0) {
-        console.warn(`⚠️ PRODUTO SEM RECEITA CADASTRADA: ${item.productName} (ID: ${item.productId})`);
-        console.warn(`   ⚠️ Para que o estoque seja baixado, cadastre a receita deste produto!`);
-        continue;
-      }
+      if (!productData) continue;
 
-      console.log(`✅ Receita encontrada para ${item.productName}:`, recipeData.length, 'ingredientes');
+      const recipe = productData.product_ingredients as any[];
+      if (!recipe || recipe.length === 0) continue;
 
-      for (const recipeItem of recipeData) {
-        console.log(`\n  🔸 Processando ingrediente da receita:`, {
-          ingrediente_id: recipeItem.ingredient_id,
-          quantidade_usada: recipeItem.quantity_used,
-          unidade: recipeItem.unit_used
-        });
-
-        // 2. Buscar ingrediente atualizado do banco
-        const { data: ingredient, error: ingError } = await supabase
+      for (const recipeItem of recipe) {
+        const { data: ingredient } = await supabase
           .from('ingredients')
-          .select('*')
+          .select('id, name, current_stock, purchase_unit')
           .eq('id', recipeItem.ingredient_id)
           .single();
 
-        if (ingError || !ingredient) {
-          console.warn(`  ⚠️ Ingrediente não encontrado no banco: ${recipeItem.ingredient_id}`, ingError);
-          continue;
-        }
+        if (!ingredient) continue;
 
-        console.log(`  ✅ Ingrediente encontrado: ${ingredient.name}`);
-        console.log(`     Estoque atual: ${ingredient.current_stock} ${ingredient.purchase_unit}`);
+        const recipeQuantityInRecipeUnit = recipeItem.quantity_used * item.quantity;
+        const quantityToDeduct = convertToStockUnit(
+          recipeQuantityInRecipeUnit,
+          recipeItem.unit_used,
+          ingredient.purchase_unit
+        );
 
-        if (ingredient.current_stock === undefined || ingredient.current_stock === null) {
-          console.warn(`  ⚠️ Ingrediente sem controle de estoque:${ingredient.name}`);
-          continue;
-        }
+        const currentConsumption = ingredientConsumption.get(ingredient.id) || 0;
+        ingredientConsumption.set(ingredient.id, currentConsumption + quantityToDeduct);
 
-        // Normalizar unidades
-        const pUnit = ingredient.purchase_unit.toLowerCase();
-        const rUnit = recipeItem.unit_used.toLowerCase();
-        const qtyUsed = recipeItem.quantity_used;
+        // Verificar se o consumo total até agora excede o estoque
+        // Precisamos checar o estoque TOTAL vs CONSUMO TOTAL
+        // Como estamos iterando, vamos verificar no final ou acumular tudo primeiro.
+        // Melhor acumular tudo primeiro.
+      }
+    }
 
-        let qtyToDeduct = qtyUsed * item.quantity;
-        let deduction = qtyToDeduct;
+    // Agora verificar disponibilidade para cada ingrediente acumulado
+    for (const [ingredientId, totalNeeded] of ingredientConsumption.entries()) {
+      const { data: ingredient } = await supabase
+        .from('ingredients')
+        .select('name, current_stock')
+        .eq('id', ingredientId)
+        .single();
 
-        console.log(`  🧮 Calculando conversão:`);
-        console.log(`     - Unidade de Compra: ${pUnit}`);
-        console.log(`     - Unidade de Uso: ${rUnit}`);
-        console.log(`     - Qtd na Receita: ${qtyUsed} ${rUnit}`);
-        console.log(`     - Qtd do Pedido: ${item.quantity} unidade(s)`);
-        console.log(`     - Total a deduzir (antes conversão): ${qtyToDeduct} ${rUnit}`);
-
-        // Conversão
-        if ((pUnit === 'kg' && rUnit === 'g') || (pUnit === 'l' && rUnit === 'ml')) {
-          deduction = qtyToDeduct / 1000;
-          console.log(`     - 🔄 Convertendo ${rUnit} → ${pUnit}: ${qtyToDeduct} / 1000 = ${deduction} ${pUnit}`);
-        }
-        else if ((pUnit === 'g' && rUnit === 'kg') || (pUnit === 'ml' && rUnit === 'l')) {
-          deduction = qtyToDeduct * 1000;
-          console.log(`     - 🔄 Convertendo ${rUnit} → ${pUnit}: ${qtyToDeduct} * 1000 = ${deduction} ${pUnit}`);
-        } else {
-          console.log(`     - ✓ Sem conversão necessária (mesma unidade ou compatível)`);
-        }
-
-        const currentStock = ingredient.current_stock;
-
-        // Calcular novo estoque
-        let rawNewStock = Math.max(0, currentStock - deduction);
-
-        // Arredondar para 3 casas decimais para evitar lixo de ponto flutuante (ex: 10.0000000001)
-        // 3 casas é ideal para KG (0.001kg = 1g)
-        const newStock = Math.round(rawNewStock * 1000) / 1000;
-
-        console.log(`  📉 BAIXANDO ESTOQUE DE: ${ingredient.name}`);
-        console.log(`     ${currentStock} ${pUnit} - ${deduction} ${pUnit} = ${newStock} ${pUnit}`);
-
-        // Atualiza no banco
-        const { error: updateError } = await supabase
-          .from('ingredients')
-          .update({ current_stock: newStock })
-          .eq('id', ingredient.id);
-
-        if (updateError) {
-          console.error(`  ❌ ERRO ao atualizar estoque de ${ingredient.name}:`, updateError);
-        } else {
-          console.log(`  ✅ SUCESSO! Estoque de ${ingredient.name} atualizado: ${currentStock} → ${newStock} ${pUnit}`);
-          // Atualiza localmente para refletir na UI
-          setIngredients(prev => prev.map(ing => ing.id === ingredient.id ? { ...ing, currentStock: newStock } : ing));
+      if (ingredient) {
+        if ((ingredient.current_stock || 0) < totalNeeded) {
+          missingItems.push(`${ingredient.name} (Necessário: ${totalNeeded.toFixed(3)}, Disponível: ${ingredient.current_stock})`);
         }
       }
     }
 
-    console.log('\n📦 ============ FIM DA BAIXA DE ESTOQUE ============\n');
+    return { available: missingItems.length === 0, missingItems };
   };
+
+  // --- Helper de Estoque ---
+  const handleStockUpdate = async (items: OrderItem[]) => {
+    console.log('📦 ============ INICIANDO BAIXA DE ESTOQUE ============');
+    console.log('📦 Items para processar:', items);
+
+    if (!items || items.length === 0) {
+      console.log('⚠️ Nenhum item para baixar do estoque');
+      return;
+    }
+
+    try {
+      // Para cada item do pedido
+      for (const item of items) {
+        // 1. Buscar o produto e sua receita
+        const { data: productData, error: productError } = await supabase
+          .from('products')
+          .select(`
+            id,
+            name,
+            product_ingredients (
+              ingredient_id,
+              quantity_used,
+              unit_used
+            )
+          `)
+          .eq('id', item.productId)
+          .single();
+
+        if (productError || !productData) {
+          console.warn(`⚠️ Produto ${item.productName} não encontrado ou sem receita`);
+          continue;
+        }
+
+        const recipe = productData.product_ingredients as any[];
+        if (!recipe || recipe.length === 0) {
+          console.log(`ℹ️ Produto ${item.productName} não tem receita cadastrada`);
+          continue;
+        }
+
+        console.log(`📋 Processando receita de ${item.productName} (${item.quantity}x)`);
+
+        // 2. Para cada ingrediente da receita, baixar o estoque
+        for (const recipeItem of recipe) {
+          // Buscar o ingrediente atual para saber sua unidade de estoque
+          const { data: ingredient, error: ingError } = await supabase
+            .from('ingredients')
+            .select('id, name, current_stock, purchase_unit')
+            .eq('id', recipeItem.ingredient_id)
+            .single();
+
+          if (ingError || !ingredient) {
+            console.warn(`⚠️ Ingrediente ${recipeItem.ingredient_id} não encontrado`);
+            continue;
+          }
+
+          // Converter a quantidade da receita para a unidade de estoque (purchase_unit)
+          const recipeQuantityInRecipeUnit = recipeItem.quantity_used * item.quantity;
+          const quantityToDeduct = convertToStockUnit(
+            recipeQuantityInRecipeUnit,
+            recipeItem.unit_used,
+            ingredient.purchase_unit // Usar purchase_unit como unidade de estoque
+          );
+
+          const newStock = (ingredient.current_stock || 0) - quantityToDeduct;
+
+          console.log(`🔄 ${ingredient.name}: ${recipeQuantityInRecipeUnit}${recipeItem.unit_used} → ${quantityToDeduct.toFixed(3)}${ingredient.purchase_unit}`);
+
+          // Atualizar o estoque
+          const { error: updateError } = await supabase
+            .from('ingredients')
+            .update({ current_stock: newStock })
+            .eq('id', ingredient.id);
+
+          if (updateError) {
+            console.error(`❌ Erro ao atualizar estoque de ${ingredient.name}:`, updateError);
+          } else {
+            console.log(`✅ ${ingredient.name}: ${ingredient.current_stock} → ${newStock.toFixed(3)} (${-quantityToDeduct.toFixed(3)})`);
+
+            // Atualizar estado local
+            setIngredients(prev => prev.map(ing =>
+              ing.id === ingredient.id
+                ? { ...ing, currentStock: newStock }
+                : ing
+            ));
+          }
+        }
+      }
+
+      console.log('✅ Baixa de estoque concluída com sucesso!');
+    } catch (error) {
+      console.error('❌ Erro na baixa de estoque:', error);
+    }
+  };
+
+  // ... (Actions de ingredientes, produtos, etc - mantidos)
+
   // --- ACTIONS ---
 
   const addTable = async (number: number) => {
@@ -398,7 +501,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         status: order.status,
         date: order.date,
         table_id: order.tableId,
-        table_number: order.tableNumber
+        table_number: order.tableNumber,
+        notes: order.notes,
+        delivery_type: order.deliveryType || order.delivery_type,
+        delivery_address: order.deliveryAddress || order.delivery_address,
+        phone: order.phone
       }]).select().single();
 
       if (error) {
@@ -410,17 +517,41 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       // 2. Insert Items
       if (order.items.length > 0) {
-        const items = order.items.map(i => ({
-          user_id: user.id,
+        // Normalizar itens (agrupar por productId) para evitar duplicação
+        const normalizedItemsMap = new Map<string, any>();
+
+        order.items.forEach(i => {
+          if (normalizedItemsMap.has(i.productId)) {
+            const existing = normalizedItemsMap.get(i.productId);
+            existing.quantity += i.quantity;
+            existing.total += i.total;
+          } else {
+            normalizedItemsMap.set(i.productId, { ...i });
+          }
+        });
+
+        const normalizedItems = Array.from(normalizedItemsMap.values());
+
+        const items = normalizedItems.map(i => ({
           order_id: orderId,
           product_id: i.productId,
           product_name: i.productName,
           quantity: i.quantity,
-          unit_price: i.unitPrice,
+          price: i.unitPrice,
           total: i.total
         }));
+
+        console.log('📦 Inserindo items no pedido:', orderId);
+        console.log('📦 Quantidade de items:', items.length);
+        console.log('📦 Estrutura do primeiro item:', items[0]);
+
         const { error: itemsError } = await supabase.from('order_items').insert(items);
-        if (itemsError) console.error("Erro ao inserir itens:", itemsError);
+        if (itemsError) {
+          console.error("❌ Erro ao inserir itens:", itemsError);
+          console.error("❌ Items que falharam:", items);
+        } else {
+          console.log('✅ Items inseridos com sucesso!');
+        }
       }
 
       // 3. Update Table Status
@@ -457,29 +588,76 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const wasOpen = prevOrder?.status === 'open';
       const isCompleted = order.status === 'completed';
 
-      // Update DB
+      // Verificar se os itens mudaram para evitar delete/insert desnecessário
+      // Isso previne que itens sumam se houver erro de rede durante atualização de status
+      const itemsChanged = JSON.stringify(order.items) !== JSON.stringify(prevOrder?.items);
+
+      // Update DB - Order details
       const { error } = await supabase.from('orders').update({
         total_amount: order.totalAmount,
         status: order.status,
-        payment_method: order.paymentMethod
+        payment_method: order.paymentMethod,
+        // Adicionar outros campos se necessário
       }).eq('id', order.id);
 
       if (error) throw error;
 
-      // Re-sync items
-      await supabase.from('order_items').delete().eq('order_id', order.id);
+      // Re-sync items ONLY if they changed
+      if (itemsChanged) {
+        console.log(`🔄 Itens mudaram no pedido ${order.id}, atualizando...`);
 
-      if (order.items.length > 0) {
-        const items = order.items.map(i => ({
-          user_id: user.id,
-          order_id: order.id,
-          product_id: i.productId,
-          product_name: i.productName,
-          quantity: i.quantity,
-          unit_price: i.unitPrice,
-          total: i.total
-        }));
-        await supabase.from('order_items').insert(items);
+        // 1. Delete old items
+        console.log(`🗑️ Deletando itens do pedido ${order.id}...`);
+        const { error: deleteError, count: deletedCount } = await supabase
+          .from('order_items')
+          .delete({ count: 'exact' })
+          .eq('order_id', order.id);
+
+        if (deleteError) {
+          console.error("❌ Erro ao deletar itens antigos:", deleteError);
+          throw deleteError;
+        }
+        console.log(`🗑️ Itens deletados: ${deletedCount}`);
+
+        // 2. Insert new items
+        if (order.items.length > 0) {
+          // Normalizar itens (agrupar por productId) para evitar duplicação
+          // Isso corrige casos onde o carrinho ou banco já estavam com itens duplicados
+          const normalizedItemsMap = new Map<string, any>();
+
+          order.items.forEach(i => {
+            if (normalizedItemsMap.has(i.productId)) {
+              const existing = normalizedItemsMap.get(i.productId);
+              existing.quantity += i.quantity;
+              existing.total += i.total; // Recalcular total se necessário, mas somar funciona se unitário for igual
+            } else {
+              // Clonar para não afetar o original
+              normalizedItemsMap.set(i.productId, { ...i });
+            }
+          });
+
+          const normalizedItems = Array.from(normalizedItemsMap.values());
+
+          console.log(`📝 Inserindo ${normalizedItems.length} novos itens (normalizados de ${order.items.length})...`);
+
+          const items = normalizedItems.map(i => ({
+            order_id: order.id,
+            product_id: i.productId,
+            product_name: i.productName,
+            quantity: i.quantity,
+            price: i.unitPrice,
+            total: i.total
+          }));
+
+          const { error: insertError } = await supabase.from('order_items').insert(items);
+          if (insertError) {
+            console.error("❌ ERRO CRÍTICO ao inserir novos itens:", insertError);
+            throw insertError;
+          }
+          console.log(`✅ Novos itens inseridos com sucesso.`);
+        }
+      } else {
+        console.log(`ℹ️ Itens não mudaram no pedido ${order.id}, pulando atualização de itens.`);
       }
 
       if (isCompleted && order.tableId) {
@@ -489,14 +667,58 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       // Update local
       setOrders(prev => prev.map(o => o.id === order.id ? order : o));
 
-      // 5. BAIXAR ESTOQUE (Se mudou de Aberto -> Concluído)
-      if (wasOpen && isCompleted) {
+      // 5. BAIXAR ESTOQUE
+      // IMPORTANTE: A lógica de baixa de estoque é:
+      // - Pedidos de mesa/balcão 'open': estoque é baixado na CRIAÇÃO (addOrder)
+      // - Adicionar itens a pedido 'open': baixar apenas a DIFERENÇA
+      // - Fechar pedido (open → completed): NÃO baixar (já foi baixado antes)
+      // - Pedidos do cardápio virtual (pending → confirmed): baixar na confirmação
+
+      // Caso: Itens foram adicionados/modificados em pedido open (ex: adicionar itens à mesa)
+      if (itemsChanged && order.status === 'open' && prevOrder) {
+        console.log('📉 Baixando estoque de itens novos/incrementados no pedido:', order.id);
+
+        // Calcular diferença de itens para baixar apenas o que foi adicionado
+        const itemsToDeduct: OrderItem[] = [];
+
+        order.items.forEach(newItem => {
+          const oldItem = prevOrder.items.find(i => i.productId === newItem.productId);
+
+          if (!oldItem) {
+            // Item totalmente novo - baixar tudo
+            itemsToDeduct.push(newItem);
+          } else if (newItem.quantity > oldItem.quantity) {
+            // Quantidade aumentou - baixar apenas a diferença
+            const diff = newItem.quantity - oldItem.quantity;
+            itemsToDeduct.push({
+              ...newItem,
+              quantity: diff,
+              total: diff * newItem.unitPrice
+            });
+          }
+        });
+
+        if (itemsToDeduct.length > 0) {
+          console.log('📦 Items a baixar do estoque:', itemsToDeduct);
+          await handleStockUpdate(itemsToDeduct);
+        } else {
+          console.log('ℹ️ Nenhum item novo para baixar do estoque.');
+        }
+      }
+      // Caso: Pedido do cardápio virtual sendo confirmado (pending/open → confirmed)
+      else if (order.status === 'confirmed' && prevOrder && prevOrder.status !== 'confirmed') {
+        console.log('📉 Baixando estoque ao confirmar pedido do cardápio:', order.id);
         await handleStockUpdate(order.items);
       }
+      // Nota: Pedidos fechados (open → completed) NÃO baixam estoque aqui
+      // pois já foi baixado quando o pedido foi criado ou quando itens foram adicionados
 
     } catch (err) {
       console.error("Falha crítica no updateOrder:", err);
       alert("Erro ao atualizar pedido. Tente novamente.");
+      // Recarregar dados para garantir consistência em caso de erro
+      // fetchData(); // Não posso chamar fetchData aqui pois está dentro do useEffect. 
+      // Idealmente deveríamos forçar um refresh.
     }
   };
 
@@ -555,7 +777,62 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       addTable, deleteTable,
       addCategory, updateCategory, deleteCategory,
       updateSettings,
-      handleStockUpdate
+      handleStockUpdate,
+      fixTableStatuses: async () => {
+        if (!user) return;
+        console.log('🔧 Fixing table statuses...');
+
+        // 1. Get all open orders
+        const { data: openOrders } = await supabase
+          .from('orders')
+          .select('id, table_id, total_amount')
+          .eq('user_id', user.id)
+          .eq('status', 'open')
+          .not('table_id', 'is', null);
+
+        const openTableIds = new Set(openOrders?.map(o => o.table_id) || []);
+        const openOrdersMap = new Map(openOrders?.map(o => [o.table_id, o]) || []);
+
+        // 2. Get all tables
+        const { data: allTables } = await supabase
+          .from('tables')
+          .select('*')
+          .eq('user_id', user.id);
+
+        if (!allTables) return;
+
+        // 3. Update tables that are wrong
+        const updates = allTables.map(async (table) => {
+          const shouldBeOccupied = openTableIds.has(table.id);
+          const isOccupied = table.status === 'occupied';
+
+          if (shouldBeOccupied !== isOccupied) {
+            console.log(`Fixing table ${table.number}: ${isOccupied} -> ${shouldBeOccupied}`);
+            const newStatus = shouldBeOccupied ? 'occupied' : 'free';
+            await supabase.from('tables').update({ status: newStatus }).eq('id', table.id);
+            return { ...table, status: newStatus };
+          }
+          return table;
+        });
+
+        await Promise.all(updates);
+
+        // 4. Refresh local state
+        const { data: refreshedTables } = await supabase.from('tables').select('*').eq('user_id', user.id).order('number');
+        if (refreshedTables) {
+          setTables(refreshedTables.map(t => {
+            const openOrder = openOrdersMap.get(t.id);
+            return {
+              id: t.id,
+              number: t.number,
+              status: t.status as 'free' | 'occupied',
+              currentOrderId: openOrder?.id,
+              currentOrderTotal: openOrder?.total_amount
+            };
+          }));
+        }
+      },
+      checkStockAvailability
     }}>
       {children}
     </AppContext.Provider>

@@ -15,8 +15,8 @@ const MenuLayout: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-gray-50 pb-20">
-            {/* Top Bar */}
-            <div className="bg-white shadow-sm sticky top-0 z-40">
+            {/* Top Bar - Removido sticky para evitar sobreposição */}
+            <div className="bg-white shadow-sm z-10">
                 <div className="max-w-md mx-auto px-4 py-3 flex justify-between items-center">
                     <h1 className="font-black text-xl tracking-tight text-gray-900">FoodCost<span className="text-orange-600">Pro</span></h1>
 
