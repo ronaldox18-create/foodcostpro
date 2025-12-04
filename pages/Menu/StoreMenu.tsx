@@ -80,10 +80,16 @@ const StoreMenu: React.FC = () => {
                 }
 
                 // Fetch products
-                const { data: productsData } = await supabase
+                const { data: productsData, error: prodError } = await supabase
                     .from('products')
                     .select('*')
                     .eq('user_id', storeId);
+
+                if (prodError) {
+                    console.error('❌ Error fetching products:', prodError);
+                } else {
+                    console.log(`✅ Fetched ${productsData?.length || 0} products for store ${storeId}`);
+                }
 
                 if (productsData) {
                     setProducts(productsData.map(p => ({
@@ -545,7 +551,7 @@ const StoreMenu: React.FC = () => {
 
             {/* Cart Modal */}
             {showCart && (
-                <div className="fixed inset-0 bg-black/60 z-[60] flex items-end">
+                <div className="fixed inset-0 bg-black/60 z-[100] flex items-end">
                     <div className="bg-white w-full rounded-t-2xl max-h-[80vh] flex flex-col animate-slide-up">
                         <div className="p-4 border-b border-gray-100 flex justify-between items-center flex-shrink-0">
                             <div>
@@ -593,7 +599,7 @@ const StoreMenu: React.FC = () => {
                             })}
                         </div>
 
-                        <div className="p-4 border-t border-gray-100 space-y-3 bg-white flex-shrink-0">
+                        <div className="p-4 border-t border-gray-100 space-y-3 bg-white flex-shrink-0 pb-8">
                             {/* Loyalty Info */}
                             {showLoyalty && isLoggedIn && (
                                 <div className="bg-gradient-to-r from-purple-50 to-orange-50 rounded-xl p-3 border border-purple-100">
