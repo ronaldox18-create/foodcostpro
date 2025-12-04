@@ -182,6 +182,11 @@ const StoreMenu: React.FC = () => {
     }, [products, searchTerm, selectedCategory]);
 
     const addToCart = (productId: string) => {
+        if (storeStatus && !storeStatus.isOpen) {
+            alert(`A loja está fechada no momento.\n\n${storeStatus.message}`);
+            return;
+        }
+
         setCart(prev => {
             const existing = prev.find(item => item.productId === productId);
             if (existing) {
@@ -507,9 +512,22 @@ const StoreMenu: React.FC = () => {
                                                 </button>
                                             </div>
                                         ) : (
-                                            <button onClick={() => addToCart(product.id)} className="bg-gray-900 text-white px-3 py-1.5 rounded-lg text-xs font-bold active:bg-black flex items-center gap-1">
-                                                <Plus size={12} />
-                                                Add
+                                            <button
+                                                onClick={() => addToCart(product.id)}
+                                                disabled={storeStatus && !storeStatus.isOpen}
+                                                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 ${storeStatus && !storeStatus.isOpen
+                                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                                    : 'bg-gray-900 text-white active:bg-black'
+                                                    }`}
+                                            >
+                                                {storeStatus && !storeStatus.isOpen ? (
+                                                    'Fechado'
+                                                ) : (
+                                                    <>
+                                                        <Plus size={12} />
+                                                        Add
+                                                    </>
+                                                )}
                                             </button>
                                         )}
                                     </div>
@@ -521,169 +539,185 @@ const StoreMenu: React.FC = () => {
             </div>
 
             {/* Cart Button */}
-            {cart.length > 0 && (
-                <div className="fixed bottom-20 left-3 right-3 z-50">
-                    <button onClick={() => setShowCart(true)} className="w-full bg-gradient-to-r from-gray-900 to-black text-white p-4 rounded-xl shadow-2xl flex justify-between items-center active:scale-[0.98] transition-transform">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center relative">
-                                <ShoppingCart size={20} />
-                                <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-orange-500 rounded-full text-[10px] font-black flex items-center justify-center">
-                                    {cartItemsCount}
-                                </span>
+            {
+                cart.length > 0 && (
+                    <div className="fixed bottom-20 left-3 right-3 z-50">
+                        <button onClick={() => setShowCart(true)} className="w-full bg-gradient-to-r from-gray-900 to-black text-white p-4 rounded-xl shadow-2xl flex justify-between items-center active:scale-[0.98] transition-transform">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center relative">
+                                    <ShoppingCart size={20} />
+                                    <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-orange-500 rounded-full text-[10px] font-black flex items-center justify-center">
+                                        {cartItemsCount}
+                                    </span>
+                                </div>
+                                <div className="text-left">
+                                    <p className="text-[10px] text-gray-400 font-semibold uppercase">Pedido</p>
+                                    <p className="font-black text-lg leading-none">{formatCurrency(finalTotal)}</p>
+                                    {loyaltyDiscount > 0 && (
+                                        <p className="text-[10px] text-green-400 font-semibold">
+                                            Economizando {formatCurrency(loyaltyDiscount)}!
+                                        </p>
+                                    )}
+                                </div>
                             </div>
-                            <div className="text-left">
-                                <p className="text-[10px] text-gray-400 font-semibold uppercase">Pedido</p>
-                                <p className="font-black text-lg leading-none">{formatCurrency(finalTotal)}</p>
-                                {loyaltyDiscount > 0 && (
-                                    <p className="text-[10px] text-green-400 font-semibold">
-                                        Economizando {formatCurrency(loyaltyDiscount)}!
-                                    </p>
-                                )}
+                            <div className="bg-white text-gray-900 px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-1">
+                                Sacola
+                                <ArrowRight size={14} />
                             </div>
-                        </div>
-                        <div className="bg-white text-gray-900 px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-1">
-                            Sacola
-                            <ArrowRight size={14} />
-                        </div>
-                    </button>
-                </div>
-            )}
+                        </button>
+                    </div>
+                )
+            }
 
             {/* Cart Modal */}
-            {showCart && (
-                <div className="fixed inset-0 bg-black/60 z-[100] flex items-end">
-                    <div className="bg-white w-full rounded-t-2xl max-h-[80vh] flex flex-col animate-slide-up">
-                        <div className="p-4 border-b border-gray-100 flex justify-between items-center flex-shrink-0">
-                            <div>
-                                <h2 className="text-lg font-black text-gray-900">Minha Sacola</h2>
-                                <p className="text-xs text-gray-500">{cartItemsCount} {cartItemsCount === 1 ? 'item' : 'itens'}</p>
+            {
+                showCart && (
+                    <div className="fixed inset-0 bg-black/60 z-[9999] flex items-end">
+                        <div className="bg-white w-full rounded-t-2xl max-h-[80vh] flex flex-col animate-slide-up">
+                            <div className="p-4 border-b border-gray-100 flex justify-between items-center flex-shrink-0">
+                                <div>
+                                    <h2 className="text-lg font-black text-gray-900">Minha Sacola</h2>
+                                    <p className="text-xs text-gray-500">{cartItemsCount} {cartItemsCount === 1 ? 'item' : 'itens'}</p>
+                                </div>
+                                <button onClick={() => setShowCart(false)} className="w-9 h-9 bg-gray-100 rounded-full flex items-center justify-center active:bg-gray-200">
+                                    <X size={18} />
+                                </button>
                             </div>
-                            <button onClick={() => setShowCart(false)} className="w-9 h-9 bg-gray-100 rounded-full flex items-center justify-center active:bg-gray-200">
-                                <X size={18} />
-                            </button>
-                        </div>
 
-                        <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                            {cart.map(item => {
-                                const product = products.find(p => p.id === item.productId);
-                                if (!product) return null;
-                                return (
-                                    <div key={item.productId} className="flex gap-3 bg-gray-50 p-3 rounded-xl">
-                                        <div className="w-16 h-16 bg-gradient-to-br from-orange-100 to-red-100 rounded-lg flex-shrink-0 flex items-center justify-center">
-                                            <span className="text-2xl">🍔</span>
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <h3 className="font-bold text-gray-900 text-sm mb-0.5 truncate">{product.name}</h3>
-                                            <p className="text-xs text-gray-500 mb-2">{formatCurrency(product.currentPrice)} cada</p>
-                                            <div className="flex items-center gap-2">
-                                                <div className="flex items-center gap-1.5 bg-white rounded-lg p-1 border border-gray-200">
-                                                    <button onClick={() => removeFromCart(item.productId)} className="w-6 h-6 flex items-center justify-center rounded text-gray-600 active:bg-red-50 active:text-red-500">
-                                                        <Minus size={12} />
-                                                    </button>
-                                                    <span className="font-bold text-xs w-6 text-center">{item.quantity}</span>
-                                                    <button onClick={() => addToCart(item.productId)} className="w-6 h-6 flex items-center justify-center bg-gray-900 rounded text-white active:bg-black">
-                                                        <Plus size={12} />
+                            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                                {cart.map(item => {
+                                    const product = products.find(p => p.id === item.productId);
+                                    if (!product) return null;
+                                    return (
+                                        <div key={item.productId} className="flex gap-3 bg-gray-50 p-3 rounded-xl">
+                                            <div className="w-16 h-16 bg-gradient-to-br from-orange-100 to-red-100 rounded-lg flex-shrink-0 flex items-center justify-center">
+                                                <span className="text-2xl">🍔</span>
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <h3 className="font-bold text-gray-900 text-sm mb-0.5 truncate">{product.name}</h3>
+                                                <p className="text-xs text-gray-500 mb-2">{formatCurrency(product.currentPrice)} cada</p>
+                                                <div className="flex items-center gap-2">
+                                                    <div className="flex items-center gap-1.5 bg-white rounded-lg p-1 border border-gray-200">
+                                                        <button onClick={() => removeFromCart(item.productId)} className="w-6 h-6 flex items-center justify-center rounded text-gray-600 active:bg-red-50 active:text-red-500">
+                                                            <Minus size={12} />
+                                                        </button>
+                                                        <span className="font-bold text-xs w-6 text-center">{item.quantity}</span>
+                                                        <button onClick={() => addToCart(item.productId)} className="w-6 h-6 flex items-center justify-center bg-gray-900 rounded text-white active:bg-black">
+                                                            <Plus size={12} />
+                                                        </button>
+                                                    </div>
+                                                    <button onClick={() => clearItemFromCart(item.productId)} className="text-red-500 text-[10px] font-bold flex items-center gap-1">
+                                                        <Trash2 size={11} />
+                                                        Remover
                                                     </button>
                                                 </div>
-                                                <button onClick={() => clearItemFromCart(item.productId)} className="text-red-500 text-[10px] font-bold flex items-center gap-1">
-                                                    <Trash2 size={11} />
-                                                    Remover
-                                                </button>
+                                            </div>
+                                            <div className="font-bold text-sm text-gray-900 self-start">
+                                                {formatCurrency(product.currentPrice * item.quantity)}
                                             </div>
                                         </div>
-                                        <div className="font-bold text-sm text-gray-900 self-start">
-                                            {formatCurrency(product.currentPrice * item.quantity)}
+                                    );
+                                })}
+                            </div>
+
+                            <div className="p-4 border-t border-gray-100 space-y-3 bg-white flex-shrink-0 pb-32">
+                                {/* Loyalty Info */}
+                                {showLoyalty && isLoggedIn && (
+                                    <div className="bg-gradient-to-r from-purple-50 to-orange-50 rounded-xl p-3 border border-purple-100">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <Sparkles size={14} className="text-purple-600" />
+                                            <p className="text-xs font-bold text-purple-900">Benefícios de Fidelidade</p>
                                         </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-
-                        <div className="p-4 border-t border-gray-100 space-y-3 bg-white flex-shrink-0 pb-8">
-                            {/* Loyalty Info */}
-                            {showLoyalty && isLoggedIn && (
-                                <div className="bg-gradient-to-r from-purple-50 to-orange-50 rounded-xl p-3 border border-purple-100">
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <Sparkles size={14} className="text-purple-600" />
-                                        <p className="text-xs font-bold text-purple-900">Benefícios de Fidelidade</p>
-                                    </div>
-                                    <div className="space-y-1 text-xs">
-                                        {loyaltyDiscount > 0 && (
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-gray-600">Desconto {currentLevel?.name}:</span>
-                                                <span className="font-bold text-green-600">-{formatCurrency(loyaltyDiscount)}</span>
-                                            </div>
-                                        )}
-                                        {pointsToEarn > 0 && (
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-gray-600">Pontos que vai ganhar:</span>
-                                                <span className="font-bold text-purple-600">+{pointsToEarn} pts</span>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Total */}
-                            <div className="space-y-1">
-                                <div className="flex justify-between items-center text-sm">
-                                    <span className="text-gray-600">Subtotal</span>
-                                    <span className="font-semibold text-gray-900">{formatCurrency(cartTotal)}</span>
-                                </div>
-                                {loyaltyDiscount > 0 && (
-                                    <div className="flex justify-between items-center text-sm">
-                                        <span className="text-green-600">Desconto Fidelidade</span>
-                                        <span className="font-semibold text-green-600">-{formatCurrency(loyaltyDiscount)}</span>
+                                        <div className="space-y-1 text-xs">
+                                            {loyaltyDiscount > 0 && (
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-gray-600">Desconto {currentLevel?.name}:</span>
+                                                    <span className="font-bold text-green-600">-{formatCurrency(loyaltyDiscount)}</span>
+                                                </div>
+                                            )}
+                                            {pointsToEarn > 0 && (
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-gray-600">Pontos que vai ganhar:</span>
+                                                    <span className="font-bold text-purple-600">+{pointsToEarn} pts</span>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 )}
-                                <div className="flex justify-between items-center pt-2 border-t border-gray-200">
-                                    <span className="text-sm font-bold text-gray-600">Total</span>
-                                    <span className="font-black text-2xl text-gray-900">{formatCurrency(finalTotal)}</span>
-                                </div>
-                            </div>
 
-                            <button
-                                onClick={() => setShowCheckoutModal(true)}
-                                className="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white py-4 rounded-xl font-bold text-base active:from-green-700 active:to-emerald-700 transition-colors flex items-center justify-center gap-2 shadow-lg"
-                            >
-                                Finalizar Pedido
-                                <ArrowRight size={20} />
-                            </button>
+                                {/* Total */}
+                                <div className="space-y-1">
+                                    <div className="flex justify-between items-center text-sm">
+                                        <span className="text-gray-600">Subtotal</span>
+                                        <span className="font-semibold text-gray-900">{formatCurrency(cartTotal)}</span>
+                                    </div>
+                                    {loyaltyDiscount > 0 && (
+                                        <div className="flex justify-between items-center text-sm">
+                                            <span className="text-green-600">Desconto Fidelidade</span>
+                                            <span className="font-semibold text-green-600">-{formatCurrency(loyaltyDiscount)}</span>
+                                        </div>
+                                    )}
+                                    <div className="flex justify-between items-center pt-2 border-t border-gray-200">
+                                        <span className="text-sm font-bold text-gray-600">Total</span>
+                                        <span className="font-black text-2xl text-gray-900">{formatCurrency(finalTotal)}</span>
+                                    </div>
+                                </div>
+
+                                <button
+                                    disabled={storeStatus && !storeStatus.isOpen}
+                                    onClick={() => {
+                                        if (storeStatus && !storeStatus.isOpen) return;
+                                        setShowCart(false);
+                                        setShowCheckoutModal(true);
+                                    }}
+                                    className={`w-full py-4 rounded-xl font-bold text-base flex items-center justify-center gap-2 shadow-lg transition-colors ${storeStatus && !storeStatus.isOpen
+                                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                        : 'bg-gradient-to-r from-green-600 to-emerald-600 text-white active:from-green-700 active:to-emerald-700'
+                                        }`}
+                                >
+                                    {storeStatus && !storeStatus.isOpen ? 'Loja Fechada' : 'Finalizar Pedido'}
+                                    {(!storeStatus || storeStatus.isOpen) && <ArrowRight size={20} />}
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Checkout Modal */}
-            {showCheckoutModal && (
-                <CheckoutModal
-                    cartTotal={finalTotal}
-                    customerPhone={customerData.phone}
-                    customerAddress={customerData.address}
-                    onConfirm={handleCheckout}
-                    onClose={() => setShowCheckoutModal(false)}
-                />
-            )}
+            {
+                showCheckoutModal && (
+                    <CheckoutModal
+                        cartTotal={finalTotal}
+                        customerPhone={customerData.phone}
+                        customerAddress={customerData.address}
+                        onConfirm={handleCheckout}
+                        onClose={() => setShowCheckoutModal(false)}
+                    />
+                )
+            }
 
             {/* Success Modal */}
-            {checkoutSuccess && (
-                <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl p-6 text-center max-w-xs animate-scale-up">
-                        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                            <CheckCircle size={32} className="text-green-500" />
-                        </div>
-                        <h3 className="text-xl font-black text-gray-900 mb-1">Pedido Enviado! 🎉</h3>
-                        <p className="text-sm text-gray-500 mb-3">Estamos preparando com carinho.</p>
-                        {pointsToEarn > 0 && (
-                            <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
-                                <p className="text-xs font-bold text-purple-900 mb-1">Você ganhou!</p>
-                                <p className="text-2xl font-black text-purple-600">+{pointsToEarn} pontos</p>
+            {
+                checkoutSuccess && (
+                    <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
+                        <div className="bg-white rounded-2xl p-6 text-center max-w-xs animate-scale-up">
+                            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                                <CheckCircle size={32} className="text-green-500" />
                             </div>
-                        )}
+                            <h3 className="text-xl font-black text-gray-900 mb-1">Pedido Enviado! 🎉</h3>
+                            <p className="text-sm text-gray-500 mb-3">Estamos preparando com carinho.</p>
+                            {pointsToEarn > 0 && (
+                                <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
+                                    <p className="text-xs font-bold text-purple-900 mb-1">Você ganhou!</p>
+                                    <p className="text-2xl font-black text-purple-600">+{pointsToEarn} pontos</p>
+                                </div>
+                            )}
+                        </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 };
 

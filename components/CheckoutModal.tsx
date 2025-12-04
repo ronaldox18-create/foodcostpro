@@ -72,7 +72,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
     };
 
     return (
-        <div className="fixed inset-0 bg-black/60 z-[70] flex items-end">
+        <div className="fixed inset-0 bg-black/60 z-[9999] flex items-end">
             <div className="bg-white w-full rounded-t-3xl max-h-[85vh] flex flex-col animate-slide-up">
                 {/* Header */}
                 <div className="p-4 border-b border-gray-100 flex justify-between items-center flex-shrink-0 bg-gradient-to-r from-orange-500 to-red-500 rounded-t-3xl">
@@ -94,8 +94,8 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
                             <button
                                 onClick={() => setDeliveryType('pickup')}
                                 className={`p-4 rounded-xl border-2 transition-all ${deliveryType === 'pickup'
-                                        ? 'border-orange-500 bg-orange-50'
-                                        : 'border-gray-200 bg-white'
+                                    ? 'border-orange-500 bg-orange-50'
+                                    : 'border-gray-200 bg-white'
                                     }`}
                             >
                                 <ShoppingBag size={24} className={`mx-auto mb-2 ${deliveryType === 'pickup' ? 'text-orange-600' : 'text-gray-400'}`} />
@@ -105,8 +105,8 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
                             <button
                                 onClick={() => setDeliveryType('delivery')}
                                 className={`p-4 rounded-xl border-2 transition-all ${deliveryType === 'delivery'
-                                        ? 'border-orange-500 bg-orange-50'
-                                        : 'border-gray-200 bg-white'
+                                    ? 'border-orange-500 bg-orange-50'
+                                    : 'border-gray-200 bg-white'
                                     }`}
                             >
                                 <Truck size={24} className={`mx-auto mb-2 ${deliveryType === 'delivery' ? 'text-orange-600' : 'text-gray-400'}`} />
@@ -160,8 +160,8 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
                                         key={method.id}
                                         onClick={() => setPaymentMethod(method.id)}
                                         className={`p-3 rounded-xl border-2 transition-all flex items-center gap-2 ${isSelected
-                                                ? `border-${method.color}-500 bg-${method.color}-50`
-                                                : 'border-gray-200 bg-white'
+                                            ? `border-${method.color}-500 bg-${method.color}-50`
+                                            : 'border-gray-200 bg-white'
                                             }`}
                                     >
                                         <Icon size={20} className={isSelected ? `text-${method.color}-600` : 'text-gray-400'} />
@@ -188,7 +188,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 </div>
 
                 {/* Footer - Fixed */}
-                <div className="p-4 border-t border-gray-200 space-y-3 bg-white flex-shrink-0">
+                <div className="p-4 border-t border-gray-200 space-y-3 bg-white flex-shrink-0 pb-32">
                     {/* Total Summary */}
                     <div className="space-y-1">
                         <div className="flex justify-between text-sm">
