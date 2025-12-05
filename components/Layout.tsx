@@ -3,7 +3,7 @@ import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, ShoppingBasket, ChefHat, Settings, Menu, Landmark, Users, ClipboardList, Boxes, Sparkles, LogOut, User as UserIcon, LayoutGrid, Smartphone, Tag, PackageCheck, Clock, Crown } from 'lucide-react';
+import { LayoutDashboard, ShoppingBasket, ChefHat, Settings, Menu, Landmark, Users, ClipboardList, Boxes, Sparkles, LogOut, User as UserIcon, LayoutGrid, Smartphone, Tag, PackageCheck, Clock, Crown, CreditCard } from 'lucide-react';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -61,6 +61,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           <div className="pt-6 pb-2 px-2">
             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Gestão</p>
           </div>
+          <NavItem to="/pdv" icon={CreditCard} label="PDV (Balcão)" active={location.pathname === '/pdv'} />
           <NavItem to="/dashboard" icon={LayoutDashboard} label="Dashboard" active={location.pathname === '/dashboard'} />
           <NavItem to="/all-orders" icon={ClipboardList} label="Todos os Pedidos" active={location.pathname === '/all-orders'} />
           <NavItem to="/customers" icon={Users} label="Clientes (CRM)" active={location.pathname === '/customers'} />
@@ -116,6 +117,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               <button onClick={() => setMobileMenuOpen(false)} className="p-2 bg-gray-100 rounded-full"><LogOut size={20} /></button>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              <NavItem to="/pdv" icon={CreditCard} label="PDV (Balcão)" active={location.pathname === '/pdv'} />
               <NavItem to="/dashboard" icon={LayoutDashboard} label="Dashboard" active={location.pathname === '/dashboard'} />
               <NavItem to="/all-orders" icon={ClipboardList} label="Todos os Pedidos" active={location.pathname === '/all-orders'} />
               <NavItem to="/customers" icon={Users} label="Clientes" active={location.pathname === '/customers'} />

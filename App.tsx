@@ -25,6 +25,7 @@ import MenuOrders from './pages/MenuOrders';
 import AllOrders from './pages/AllOrders'; // Nova Página Unificada
 import BusinessHoursAdvanced from './pages/BusinessHoursAdvanced'; // Horários de Funcionamento Avançado
 import LoyaltySettings from './pages/LoyaltySettings'; // Sistema de Fidelidade
+import PDV from './pages/PDV'; // Sistema de PDV (Ponto de Venda)
 
 // Menu Pages
 import MenuLayout from './pages/Menu/MenuLayout';
@@ -68,6 +69,7 @@ const AppRoutes: React.FC = () => {
 
       {/* Private Routes - WITH OrderNotificationProvider */}
       <Route path="/dashboard" element={<PrivateLayout><Dashboard /></PrivateLayout>} />
+      <Route path="/pdv" element={<PrivateLayout><PDV /></PrivateLayout>} />
       <Route path="/tables" element={<PrivateLayout><Tables /></PrivateLayout>} />
       <Route path="/table-service" element={<PrivateLayout><TableService /></PrivateLayout>} />
       <Route path="/orders" element={<PrivateLayout><Orders /></PrivateLayout>} />

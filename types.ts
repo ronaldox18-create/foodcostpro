@@ -272,3 +272,66 @@ export interface LevelHistory {
   created_at: string;
 }
 
+// --- Sistema de PDV (Ponto de Venda) ---
+
+/**
+ * Caixa - Abertura/Fechamento
+ */
+export interface CashRegister {
+  id: string;
+  user_id: string;
+  openedBy: string; // Nome do operador
+  opened_by?: string; // snake_case variant from Supabase
+  openedAt: string;
+  opened_at?: string; // snake_case variant from Supabase
+  closedAt?: string;
+  closed_at?: string; // snake_case variant from Supabase
+  initialCash: number; // Valor inicial do caixa
+  initial_cash?: number; // snake_case variant from Supabase
+  finalCash?: number; // Valor final (no fechamento)
+  final_cash?: number; // snake_case variant from Supabase
+  expectedCash?: number; // Valor esperado (calculado)
+  expected_cash?: number; // snake_case variant from Supabase
+  difference?: number; // Diferença entre esperado e real
+  status: 'open' | 'closed';
+  created_at?: string;
+}
+
+/**
+ * Movimentação de Caixa (Sangria/Reforço)
+ */
+export interface CashMovement {
+  id: string;
+  user_id: string;
+  cashRegisterId: string;
+  type: 'withdrawal' | 'addition'; // sangria ou reforço
+  amount: number;
+  reason: string;
+  performedBy: string;
+  created_at: string;
+}
+
+/**
+ * Pagamento em uma venda do PDV (pode ter múltiplos)
+ */
+export interface POSPayment {
+  method: PaymentMethod;
+  amount: number;
+}
+
+/**
+ * Venda do PDV
+ */
+export interface POSSale extends Order {
+  cashRegisterId: string;
+  payments: POSPayment[]; // Múltiplas formas de pagamento
+  change?: number; // Troco (se dinheiro)
+  serviceCharge?: number; // Taxa de serviço (%)
+  tip?: number; // Gorjeta
+  discount?: number; // Desconto em R$
+  discountPercent?: number; // Desconto em %
+  subtotal: number; // Total antes de taxas e descontos
+  loyaltyPointsUsed?: number; // Pontos utilizados
+  loyaltyDiscountApplied?: number; // Desconto do programa de fidelidade
+}
+

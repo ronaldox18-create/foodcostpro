@@ -2,54 +2,169 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
 import { supabase } from '../utils/supabaseClient';
-import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
-import { User, Mail, Store, CreditCard, Shield, Download, CheckCircle, AlertTriangle, Save, Loader2, Lock } from 'lucide-react';
+import {
+  User, Mail, Store, CreditCard, Shield, Download, CheckCircle, AlertTriangle,
+  Save, Loader2, Lock, Bell, Activity, BarChart3, Camera, Moon, Sun,
+  Trash2, Settings as SettingsIcon, TrendingUp, Package, Users, ShoppingBag,
+  Calendar, DollarSign, FileText, LogOut, Eye, EyeOff, Upload, Phone, MapPin
+} from 'lucide-react';
+
+type TabType = 'profile' | 'security' | 'plan' | 'preferences' | 'data';
 
 const Account: React.FC = () => {
-  const { user } = useAuth();
-  const { settings, updateSettings, products, ingredients, customers, fixedCosts } = useApp();
+  const { user, signOut } = useAuth();
+  const { settings, updateSettings, products, ingredients, customers, fixedCosts, orders } = useApp();
 
-  // Estados para formulários
+  const [activeTab, setActiveTab] = useState<TabType>('profile');
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
+  // Profile states
   const [name, setName] = useState('');
   const [businessName, setBusinessName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState('');
+  const [cnpj, setCnpj] = useState('');
+  const [stateRegistration, setStateRegistration] = useState('');
+  const [municipalRegistration, setMunicipalRegistration] = useState('');
+  const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
 
-  // Estados para senha
+  // Password states
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
 
-  // Carregar dados iniciais
+  // Preferences states
+  const [emailNotifications, setEmailNotifications] = useState(true);
+  const [orderAlerts, setOrderAlerts] = useState(true);
+  const [stockAlerts, setStockAlerts] = useState(true);
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+
+  // Load initial data
   useEffect(() => {
     if (user) {
-      const metadataName = user.user_metadata?.name || '';
-      setName(metadataName);
+      const metadata = user.user_metadata;
+      setName(metadata?.name || '');
+      setPhone(metadata?.phone || '');
+      setAddress(metadata?.address || '');
+      setCnpj(metadata?.cnpj || '');
+      setStateRegistration(metadata?.state_registration || '');
+      setMunicipalRegistration(metadata?.municipal_registration || '');
+      setProfilePhoto(metadata?.profile_photo || null);
     }
     if (settings) {
       setBusinessName(settings.businessName || '');
     }
   }, [user, settings]);
 
-  const getInitials = (email: string | undefined) => email ? email.substring(0, 2).toUpperCase() : 'US';
+  // Calculate statistics
+  const stats = {
+    totalProducts: products.length,
+    totalIngredients: ingredients.length,
+    totalCustomers: customers.length,
+    totalOrders: orders?.length || 0,
+    totalRevenue: orders?.reduce((sum, order) => sum + order.totalAmount, 0) || 0,
+    lowStockItems: ingredients.filter(ing =>
+      ing.currentStock && ing.minStock && ing.currentStock <= ing.minStock
+    ).length
+  };
 
-  // --- FUNÇÕES DE AÇÃO ---
+  const getInitials = (name: string, email: string | undefined) => {
+    if (name && name.trim()) {
+      const names = name.trim().split(' ');
+      if (names.length >= 2) {
+        return (names[0][0] + names[names.length - 1][0]).toUpperCase();
+      }
+      return names[0].substring(0, 2).toUpperCase();
+    }
+    return email ? email.substring(0, 2).toUpperCase() : 'US';
+  };
+
+  // Format CNPJ: XX.XXX.XXX/XXXX-XX
+  const formatCNPJ = (value: string) => {
+    const numbers = value.replace(/\D/g, '');
+    if (numbers.length <= 14) {
+      return numbers
+        .replace(/^(\d{2})(\d)/, '$1.$2')
+        .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+        .replace(/\.(\d{3})(\d)/, '.$1/$2')
+        .replace(/(\d{4})(\d)/, '$1-$2');
+    }
+    return value;
+  };
+
+  // Handle CNPJ input with formatting
+  const handleCNPJChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatCNPJ(e.target.value);
+    setCnpj(formatted);
+  };
+
+  // Simple CNPJ validation (just checks if it has 14 digits)
+  const isValidCNPJ = (cnpj: string) => {
+    const numbers = cnpj.replace(/\D/g, '');
+    return numbers.length === 0 || numbers.length === 14;
+  };
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      setMsg({ type: 'error', text: 'A foto deve ter no máximo 2MB' });
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64 = reader.result as string;
+        setProfilePhoto(base64);
+
+        // Update user metadata
+        await supabase.auth.updateUser({
+          data: { profile_photo: base64 }
+        });
+
+        setMsg({ type: 'success', text: 'Foto atualizada com sucesso!' });
+      };
+      reader.readAsDataURL(file);
+    } catch (error: any) {
+      setMsg({ type: 'error', text: 'Erro ao fazer upload da foto' });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleUpdateProfile = async () => {
+    // Validate CNPJ before saving
+    if (cnpj && !isValidCNPJ(cnpj)) {
+      setMsg({ type: 'error', text: 'CNPJ inválido. Deve conter 14 dígitos.' });
+      return;
+    }
+
     setLoading(true);
     setMsg(null);
     try {
-      // 1. Atualizar metadata no Supabase (Nome)
-      const { error: authError } = await supabase.auth.updateUser({
-        data: { name: name }
+      // Update user metadata
+      await supabase.auth.updateUser({
+        data: {
+          name,
+          phone,
+          address,
+          cnpj,
+          state_registration: stateRegistration,
+          municipal_registration: municipalRegistration
+        }
       });
-      if (authError) throw authError;
 
-      // 2. Atualizar configurações locais (Nome do Negócio) - COM AWAIT!
+      // Update business settings
       await updateSettings({
         ...settings,
-        businessName: businessName
+        businessName
       });
 
       setMsg({ type: 'success', text: 'Perfil atualizado com sucesso!' });
@@ -73,10 +188,9 @@ const Account: React.FC = () => {
     setLoading(true);
     setMsg(null);
     try {
-      const { error } = await supabase.auth.updateUser({ password: newPassword });
-      if (error) throw error;
-
+      await supabase.auth.updateUser({ password: newPassword });
       setMsg({ type: 'success', text: 'Senha alterada com sucesso!' });
+      setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
       setIsChangingPassword(false);
@@ -93,8 +207,8 @@ const Account: React.FC = () => {
       user: {
         id: user?.id,
         email: user?.email,
-        name: name,
-        businessName: businessName
+        name,
+        businessName
       },
       data: {
         products,
@@ -118,234 +232,858 @@ const Account: React.FC = () => {
     setMsg({ type: 'success', text: 'Backup baixado com sucesso!' });
   };
 
-  // Dados simulados para o plano (Visual apenas)
+  const handleLogout = async () => {
+    if (confirm('Deseja realmente sair da sua conta?')) {
+      await signOut();
+    }
+  };
+
   const planDetails = {
     name: 'Pro',
     status: 'active',
-    renewalDate: new Date(new Date().setMonth(new Date().getMonth() + 1)).toLocaleDateString('pt-BR'),
-    price: 'R$ 49,90',
-    features: ['Produtos ilimitados', 'Ingredientes ilimitados', 'Gestão de Clientes', 'Consultor IA']
+    nextBilling: new Date(new Date().setMonth(new Date().getMonth() + 1)).toLocaleDateString('pt-BR'),
+    price: 49.90,
+    features: [
+      'Produtos e ingredientes ilimitados',
+      'Gestão completa de clientes',
+      'Sistema PDV integrado',
+      'Controle de estoque avançado',
+      'Relatórios e análises',
+      'Sistema de fidelidade',
+      'Suporte prioritário'
+    ]
   };
 
+  const tabs = [
+    { id: 'profile' as TabType, label: 'Perfil', icon: User },
+    { id: 'security' as TabType, label: 'Segurança', icon: Shield },
+    { id: 'plan' as TabType, label: 'Plano', icon: CreditCard },
+    { id: 'preferences' as TabType, label: 'Preferências', icon: SettingsIcon },
+    { id: 'data' as TabType, label: 'Dados', icon: Download }
+  ];
+
   return (
-    <div className="space-y-6 max-w-6xl mx-auto pb-10">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-800">Minha Conta</h1>
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-orange-50/30 to-slate-50 pb-20">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-      {msg && (
-        <div className={`p-4 rounded-lg border flex items-center gap-2 ${msg.type === 'success' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
-          {msg.type === 'success' ? <CheckCircle size={20} /> : <AlertTriangle size={20} />}
-          {msg.text}
-        </div>
-      )}
+        {/* Header with Profile Card */}
+        <div className="bg-gradient-to-r from-orange-600 to-red-600 rounded-3xl shadow-2xl overflow-hidden mb-8">
+          <div className="p-8 text-white relative">
+            <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 bg-white opacity-10 rounded-full blur-3xl"></div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-
-        {/* Coluna da Esquerda - Resumo */}
-        <div className="md:col-span-1 space-y-6">
-          <Card className="flex flex-col items-center border-t-4 border-orange-500">
-            <CardContent className="pt-8 flex flex-col items-center text-center w-full">
-              <div className="w-24 h-24 rounded-full bg-gradient-to-br from-orange-400 to-red-500 text-white flex items-center justify-center text-3xl font-bold shadow-md mb-4 ring-4 ring-white">
-                {getInitials(user?.email)}
+            <div className="relative z-10 flex flex-col md:flex-row items-center md:items-start gap-6">
+              {/* Profile Photo */}
+              <div className="relative group">
+                <div className="w-32 h-32 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-4xl font-bold shadow-2xl ring-4 ring-white/30 overflow-hidden">
+                  {profilePhoto ? (
+                    <img src={profilePhoto} alt={name} className="w-full h-full object-cover" />
+                  ) : (
+                    <span>{getInitials(name, user?.email)}</span>
+                  )}
+                </div>
+                <label className="absolute bottom-0 right-0 p-2 bg-white rounded-full shadow-lg cursor-pointer hover:scale-110 transition-transform">
+                  <Camera className="w-5 h-5 text-orange-600" />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handlePhotoUpload}
+                    className="hidden"
+                  />
+                </label>
               </div>
-              <h2 className="text-xl font-bold text-gray-900">{name || 'Usuário'}</h2>
-              <p className="text-gray-500 text-sm mb-4">{user?.email}</p>
-              <div className="py-1 px-3 bg-green-100 text-green-700 rounded-full text-xs font-semibold uppercase tracking-wide">
-                Plano {planDetails.name}
-              </div>
-            </CardContent>
-          </Card>
 
-          <Card className="overflow-hidden">
-            <div className="p-4 bg-gray-50 border-b border-gray-100 font-semibold text-gray-700 flex items-center gap-2">
-              <Shield size={18} className="text-indigo-600" />
-              Segurança
+              {/* Profile Info */}
+              <div className="flex-1 text-center md:text-left">
+                <h1 className="text-3xl font-bold mb-2">{name || 'Bem-vindo'}</h1>
+                <p className="text-white/80 mb-1 flex items-center gap-2 justify-center md:justify-start">
+                  <Mail className="w-4 h-4" />
+                  {user?.email}
+                </p>
+                {businessName && (
+                  <p className="text-white/80 flex items-center gap-2 justify-center md:justify-start">
+                    <Store className="w-4 h-4" />
+                    {businessName}
+                  </p>
+                )}
+                <div className="mt-4 inline-flex items-center gap-2 bg-white/20 backdrop-blur-sm px-4 py-2 rounded-full">
+                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                  <span className="text-sm font-semibold">Plano {planDetails.name} Ativo</span>
+                </div>
+              </div>
+
+              {/* Quick Stats */}
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
+                  <Package className="w-6 h-6 mx-auto mb-2" />
+                  <div className="text-2xl font-bold">{stats.totalProducts}</div>
+                  <div className="text-xs text-white/70">Produtos</div>
+                </div>
+                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
+                  <Users className="w-6 h-6 mx-auto mb-2" />
+                  <div className="text-2xl font-bold">{stats.totalCustomers}</div>
+                  <div className="text-xs text-white/70">Clientes</div>
+                </div>
+                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
+                  <ShoppingBag className="w-6 h-6 mx-auto mb-2" />
+                  <div className="text-2xl font-bold">{stats.totalOrders}</div>
+                  <div className="text-xs text-white/70">Pedidos</div>
+                </div>
+              </div>
             </div>
-            <CardContent className="space-y-4 pt-4">
-              <div className="flex flex-col gap-2">
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-gray-600">Senha</span>
+          </div>
+        </div>
+
+        {/* Messages */}
+        {msg && (
+          <div className={`mb-6 p-4 rounded-xl border flex items-center gap-3 animate-in slide-in-from-top-5 ${msg.type === 'success'
+            ? 'bg-green-50 border-green-200 text-green-700'
+            : 'bg-red-50 border-red-200 text-red-700'
+            }`}>
+            {msg.type === 'success' ? <CheckCircle size={24} /> : <AlertTriangle size={24} />}
+            <span className="font-medium">{msg.text}</span>
+          </div>
+        )}
+
+        {/* Tabs Navigation */}
+        <div className="bg-white rounded-2xl shadow-lg mb-6 overflow-x-auto">
+          <div className="flex border-b border-gray-200">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex-1 min-w-[140px] px-6 py-4 flex items-center justify-center gap-2 font-semibold transition-all ${activeTab === tab.id
+                    ? 'text-orange-600 border-b-2 border-orange-600 bg-orange-50/50'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    }`}
+                >
+                  <Icon className="w-5 h-5" />
+                  <span className="hidden sm:inline">{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Tab Content */}
+        <div className="bg-white rounded-2xl shadow-lg p-8">
+
+          {/* PROFILE TAB */}
+          {activeTab === 'profile' && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-5">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">Informações do Perfil</h2>
+                <p className="text-gray-600">Gerencie suas informações pessoais e do negócio</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                    <User className="w-4 h-4 text-gray-400" />
+                    Nome Completo
+                  </label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Seu nome completo"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                    <Store className="w-4 h-4 text-gray-400" />
+                    Nome do Negócio
+                  </label>
+                  <input
+                    type="text"
+                    value={businessName}
+                    onChange={(e) => setBusinessName(e.target.value)}
+                    placeholder="Nome do seu negócio"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                    <Phone className="w-4 h-4 text-gray-400" />
+                    Telefone
+                  </label>
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="(00) 00000-0000"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                    <Mail className="w-4 h-4 text-gray-400" />
+                    E-mail (não editável)
+                  </label>
+                  <div className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-600">
+                    {user?.email}
+                  </div>
+                </div>
+
+                <div className="md:col-span-2 space-y-2">
+                  <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-gray-400" />
+                    Endereço
+                  </label>
+                  <input
+                    type="text"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    placeholder="Endereço completo do negócio"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all"
+                  />
+                </div>
+
+                {/* Divider for Fiscal Data */}
+                <div className="md:col-span-2">
+                  <div className="flex items-center gap-3 my-4">
+                    <div className="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent"></div>
+                    <div className="flex items-center gap-2 text-sm font-semibold text-gray-600">
+                      <FileText className="w-4 h-4 text-orange-600" />
+                      Dados Fiscais
+                    </div>
+                    <div className="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent"></div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-gray-400" />
+                    CNPJ
+                  </label>
+                  <input
+                    type="text"
+                    value={cnpj}
+                    onChange={handleCNPJChange}
+                    placeholder="00.000.000/0000-00"
+                    maxLength={18}
+                    className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all ${cnpj && !isValidCNPJ(cnpj)
+                        ? 'border-red-300 bg-red-50'
+                        : 'border-gray-300'
+                      }`}
+                  />
+                  {cnpj && !isValidCNPJ(cnpj) && (
+                    <p className="text-xs text-red-600 flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3" />
+                      CNPJ deve ter 14 dígitos
+                    </p>
+                  )}
+                  {cnpj && isValidCNPJ(cnpj) && cnpj.replace(/\D/g, '').length === 14 && (
+                    <p className="text-xs text-green-600 flex items-center gap-1">
+                      <CheckCircle className="w-3 h-3" />
+                      CNPJ válido
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-gray-400" />
+                    Inscrição Estadual
+                    <span className="text-xs text-gray-400 font-normal">(opcional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={stateRegistration}
+                    onChange={(e) => setStateRegistration(e.target.value)}
+                    placeholder="000.000.000.000"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all"
+                  />
+                </div>
+
+                <div className="md:col-span-2 space-y-2">
+                  <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-gray-400" />
+                    Inscrição Municipal
+                    <span className="text-xs text-gray-400 font-normal">(opcional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={municipalRegistration}
+                    onChange={(e) => setMunicipalRegistration(e.target.value)}
+                    placeholder="Inscrição Municipal"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-4 border-t border-gray-200">
+                <button
+                  onClick={handleUpdateProfile}
+                  disabled={loading}
+                  className="flex items-center gap-2 bg-gradient-to-r from-orange-600 to-red-600 text-white px-8 py-3 rounded-xl hover:shadow-lg hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="animate-spin" size={20} />
+                      Salvando...
+                    </>
+                  ) : (
+                    <>
+                      <Save size={20} />
+                      Salvar Alterações
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* SECURITY TAB */}
+          {activeTab === 'security' && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-5">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">Segurança da Conta</h2>
+                <p className="text-gray-600">Mantenha sua conta segura e protegida</p>
+              </div>
+
+              {/* Change Password Section */}
+              <div className="bg-gradient-to-br from-slate-50 to-gray-50 rounded-2xl p-6 border border-gray-200">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 bg-orange-100 rounded-xl">
+                      <Lock className="w-6 h-6 text-orange-600" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-gray-900">Alterar Senha</h3>
+                      <p className="text-sm text-gray-600">Mantenha sua senha segura e forte</p>
+                    </div>
+                  </div>
                   <button
                     onClick={() => setIsChangingPassword(!isChangingPassword)}
-                    className="text-orange-600 hover:text-orange-700 font-medium text-xs"
+                    className="text-orange-600 hover:text-orange-700 font-semibold text-sm px-4 py-2 rounded-lg hover:bg-orange-50 transition-colors"
                   >
-                    {isChangingPassword ? 'Cancelar' : 'Alterar'}
+                    {isChangingPassword ? 'Cancelar' : 'Alterar Senha'}
                   </button>
                 </div>
 
                 {isChangingPassword && (
-                  <div className="bg-gray-50 p-3 rounded-lg space-y-3 animate-in fade-in slide-in-from-top-2">
-                    <div>
-                      <label className="text-xs text-gray-500">Nova Senha</label>
+                  <div className="space-y-4 animate-in fade-in slide-in-from-top-3">
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-700">Nova Senha</label>
                       <div className="relative">
-                        <Lock size={14} className="absolute left-3 top-3 text-gray-400" />
+                        <Lock className="absolute left-3 top-3.5 w-5 h-5 text-gray-400" />
                         <input
-                          type="password"
+                          type={showNewPassword ? 'text' : 'password'}
                           value={newPassword}
                           onChange={(e) => setNewPassword(e.target.value)}
-                          className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
-                          placeholder="******"
+                          placeholder="Digite a nova senha"
+                          className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none"
                         />
+                        <button
+                          type="button"
+                          onClick={() => setShowNewPassword(!showNewPassword)}
+                          className="absolute right-3 top-3.5 text-gray-400 hover:text-gray-600"
+                        >
+                          {showNewPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                        </button>
                       </div>
                     </div>
-                    <div>
-                      <label className="text-xs text-gray-500">Confirmar Senha</label>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-700">Confirmar Nova Senha</label>
                       <div className="relative">
-                        <Lock size={14} className="absolute left-3 top-3 text-gray-400" />
+                        <Lock className="absolute left-3 top-3.5 w-5 h-5 text-gray-400" />
                         <input
-                          type="password"
+                          type={showNewPassword ? 'text' : 'password'}
                           value={confirmPassword}
                           onChange={(e) => setConfirmPassword(e.target.value)}
-                          className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
-                          placeholder="******"
+                          placeholder="Confirme a nova senha"
+                          className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none"
                         />
                       </div>
                     </div>
+
                     <button
                       onClick={handleUpdatePassword}
-                      disabled={loading}
-                      className="w-full bg-gray-900 text-white text-xs py-2 rounded-md hover:bg-gray-800 disabled:opacity-50"
+                      disabled={loading || !newPassword || !confirmPassword}
+                      className="w-full bg-gradient-to-r from-gray-900 to-gray-800 text-white py-3 rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
                     >
                       {loading ? 'Atualizando...' : 'Salvar Nova Senha'}
                     </button>
+
+                    {newPassword && (
+                      <div className="mt-3">
+                        <div className="text-sm text-gray-600 mb-2">Força da senha:</div>
+                        <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full transition-all ${newPassword.length < 6
+                              ? 'w-1/3 bg-red-500'
+                              : newPassword.length < 8
+                                ? 'w-2/3 bg-yellow-500'
+                                : 'w-full bg-green-500'
+                              }`}
+                          ></div>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {newPassword.length < 6
+                            ? 'Fraca - Use pelo menos 6 caracteres'
+                            : newPassword.length < 8
+                              ? 'Média - Use pelo menos 8 caracteres'
+                              : 'Forte - Sua senha está segura!'}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
 
-              <div className="border-t border-gray-100 pt-3 flex justify-between items-center text-sm">
-                <span className="text-gray-600">Autenticação 2FA</span>
-                <span className="text-gray-400 text-xs">Em breve</span>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Coluna da Direita - Detalhes Editáveis */}
-        <div className="md:col-span-2 space-y-6">
-
-          {/* Dados Pessoais e do Negócio */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <User className="w-5 h-5 text-gray-500" />
-                Dados do Perfil
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-gray-500 uppercase">Nome Completo</label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      className="w-full p-3 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all"
-                    />
-                    <User size={18} className="absolute right-3 top-3.5 text-gray-400 pointer-events-none" />
+              {/* Two-Factor Authentication */}
+              <div className="bg-gradient-to-br from-slate-50 to-gray-50 rounded-2xl p-6 border border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 bg-indigo-100 rounded-xl">
+                      <Shield className="w-6 h-6 text-indigo-600" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-gray-900">Autenticação em Dois Fatores (2FA)</h3>
+                      <p className="text-sm text-gray-600">Adicione uma camada extra de segurança</p>
+                    </div>
                   </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-gray-500 uppercase">Nome do Negócio</label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={businessName}
-                      onChange={(e) => setBusinessName(e.target.value)}
-                      className="w-full p-3 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all"
-                    />
-                    <Store size={18} className="absolute right-3 top-3.5 text-gray-400 pointer-events-none" />
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-gray-500 uppercase">E-mail (Não editável)</label>
-                  <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg border border-gray-100 text-gray-500">
-                    <Mail size={18} className="text-gray-400" />
-                    <span>{user?.email}</span>
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-gray-500 uppercase">ID do Usuário</label>
-                  <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg border border-gray-100 text-gray-400 text-sm font-mono truncate">
-                    <span>{user?.id}</span>
+                  <div className="text-sm bg-gray-200 text-gray-600 px-3 py-1 rounded-full font-medium">
+                    Em breve
                   </div>
                 </div>
               </div>
 
-              <div className="mt-8 flex justify-end">
+              {/* Sessions */}
+              <div className="bg-gradient-to-br from-slate-50 to-gray-50 rounded-2xl p-6 border border-gray-200">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-3 bg-purple-100 rounded-xl">
+                    <Activity className="w-6 h-6 text-purple-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-900">Sessões Ativas</h3>
+                    <p className="text-sm text-gray-600">Gerencie dispositivos conectados</p>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200">
+                    <div>
+                      <p className="font-medium text-gray-900">Dispositivo Atual</p>
+                      <p className="text-sm text-gray-500">Último acesso: Agora</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                      <span className="text-sm text-green-600 font-medium">Ativo</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Logout */}
+              <div className="flex justify-end pt-4 border-t border-gray-200">
                 <button
-                  onClick={handleUpdateProfile}
-                  disabled={loading}
-                  className="flex items-center gap-2 bg-orange-600 text-white px-6 py-2.5 rounded-lg hover:bg-orange-700 transition-colors shadow-sm disabled:opacity-50 font-medium"
+                  onClick={handleLogout}
+                  className="flex items-center gap-2 text-red-600 hover:text-red-700 px-6 py-3 rounded-xl hover:bg-red-50 transition-all font-semibold"
                 >
-                  {loading ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
-                  Salvar Alterações
+                  <LogOut size={20} />
+                  Sair da Conta
                 </button>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          )}
 
-          {/* Plano e Assinatura */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <CreditCard className="w-5 h-5 text-gray-500" />
-                Plano e Assinatura
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="bg-gradient-to-r from-gray-900 to-gray-800 rounded-xl p-6 text-white mb-6 relative overflow-hidden">
-                <div className="absolute top-0 right-0 -mr-10 -mt-10 w-40 h-40 bg-white opacity-5 rounded-full blur-2xl"></div>
+          {/* PLAN TAB */}
+          {activeTab === 'plan' && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-5">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">Plano e Assinatura</h2>
+                <p className="text-gray-600">Gerencie sua assinatura e forma de pagamento</p>
+              </div>
 
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative z-10">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="text-2xl font-bold">Plano {planDetails.name}</h3>
-                      <span className="bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">Ativo</span>
+              {/* Current Plan Card */}
+              <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-8 text-white relative overflow-hidden">
+                <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 bg-white opacity-5 rounded-full blur-3xl"></div>
+                <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-60 h-60 bg-orange-500 opacity-10 rounded-full blur-3xl"></div>
+
+                <div className="relative z-10">
+                  <div className="flex items-start justify-between mb-6">
+                    <div>
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="text-3xl font-bold">Plano {planDetails.name}</h3>
+                        <span className="bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">
+                          Ativo
+                        </span>
+                      </div>
+                      <p className="text-white/70">Próxima cobrança: {planDetails.nextBilling}</p>
                     </div>
-                    <p className="text-gray-400 text-sm">Renovação: {planDetails.renewalDate}</p>
+                    <div className="text-right">
+                      <div className="text-4xl font-bold">R$ {planDetails.price.toFixed(2)}</div>
+                      <div className="text-white/70 text-sm">por mês</div>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-3xl font-bold">{planDetails.price}<span className="text-sm text-gray-400 font-normal">/mês</span></p>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {planDetails.features.map((feature, idx) => (
+                      <div key={idx} className="flex items-center gap-2 text-white/90">
+                        <CheckCircle size={16} className="text-green-400 flex-shrink-0" />
+                        <span className="text-sm">{feature}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-6 flex gap-3">
+                    <button className="flex-1 bg-white text-gray-900 py-3 rounded-xl font-semibold hover:bg-gray-100 transition-all">
+                      Gerenciar Assinatura
+                    </button>
+                    <button className="px-6 bg-white/10 backdrop-blur-sm text-white py-3 rounded-xl font-semibold hover:bg-white/20 transition-all border border-white/20">
+                      Ver Outros Planos
+                    </button>
                   </div>
                 </div>
               </div>
-            </CardContent>
-          </Card>
 
-          {/* Zona de Dados */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card className="border-l-4 border-indigo-500 cursor-pointer hover:bg-indigo-50/10 transition-colors" onClick={handleExportData}>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
-                    <Download size={20} />
+              {/* Billing History */}
+              <div className="bg-gradient-to-br from-slate-50 to-gray-50 rounded-2xl p-6 border border-gray-200">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-3 bg-green-100 rounded-xl">
+                    <FileText className="w-6 h-6 text-green-600" />
                   </div>
-                  <h3 className="font-bold text-gray-900">Backup dos Dados</h3>
-                </div>
-                <p className="text-sm text-gray-500 mb-4">Baixe um arquivo JSON com todos os seus produtos, ingredientes e clientes.</p>
-                <span className="text-indigo-600 font-medium text-sm hover:underline">Clique para baixar</span>
-              </CardContent>
-            </Card>
-
-            <Card className="border-l-4 border-red-500 opacity-80 hover:opacity-100 transition-opacity">
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="p-2 bg-red-50 rounded-lg text-red-600">
-                    <AlertTriangle size={20} />
+                  <div>
+                    <h3 className="font-bold text-gray-900">Histórico de Pagamentos</h3>
+                    <p className="text-sm text-gray-600">Visualize suas faturas anteriores</p>
                   </div>
-                  <h3 className="font-bold text-gray-900">Zona de Perigo</h3>
                 </div>
-                <p className="text-sm text-gray-500 mb-4">Ações irreversíveis como excluir sua conta ou resetar dados do sistema.</p>
-                <button className="text-red-600 font-medium text-sm hover:underline">Configurações Avançadas</button>
-              </CardContent>
-            </Card>
-          </div>
 
+                <div className="space-y-2">
+                  {[...Array(3)].map((_, idx) => {
+                    const date = new Date();
+                    date.setMonth(date.getMonth() - idx);
+                    return (
+                      <div key={idx} className="flex items-center justify-between p-4 bg-white rounded-lg border border-gray-200 hover:border-orange-300 transition-colors">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-green-50 rounded-lg">
+                            <DollarSign className="w-5 h-5 text-green-600" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-900">{date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</p>
+                            <p className="text-sm text-gray-500">Plano {planDetails.name}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <span className="font-bold text-gray-900">R$ {planDetails.price.toFixed(2)}</span>
+                          <button className="text-orange-600 hover:text-orange-700 text-sm font-medium">
+                            Download
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Usage Statistics */}
+              <div className="bg-gradient-to-br from-slate-50 to-gray-50 rounded-2xl p-6 border border-gray-200">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-3 bg-blue-100 rounded-xl">
+                    <BarChart3 className="w-6 h-6 text-blue-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-900">Uso do Sistema</h3>
+                    <p className="text-sm text-gray-600">Estatísticas do mês atual</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-white p-4 rounded-xl border border-gray-200">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Package className="w-4 h-4 text-orange-600" />
+                      <span className="text-xs font-semibold text-gray-600">Produtos</span>
+                    </div>
+                    <div className="text-2xl font-bold text-gray-900">{stats.totalProducts}</div>
+                    <div className="text-xs text-gray-500 mt-1">cadastrados</div>
+                  </div>
+
+                  <div className="bg-white p-4 rounded-xl border border-gray-200">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Users className="w-4 h-4 text-blue-600" />
+                      <span className="text-xs font-semibold text-gray-600">Clientes</span>
+                    </div>
+                    <div className="text-2xl font-bold text-gray-900">{stats.totalCustomers}</div>
+                    <div className="text-xs text-gray-500 mt-1">cadastrados</div>
+                  </div>
+
+                  <div className="bg-white p-4 rounded-xl border border-gray-200">
+                    <div className="flex items-center gap-2 mb-2">
+                      <ShoppingBag className="w-4 h-4 text-green-600" />
+                      <span className="text-xs font-semibold text-gray-600">Pedidos</span>
+                    </div>
+                    <div className="text-2xl font-bold text-gray-900">{stats.totalOrders}</div>
+                    <div className="text-xs text-gray-500 mt-1">processados</div>
+                  </div>
+
+                  <div className="bg-white p-4 rounded-xl border border-gray-200">
+                    <div className="flex items-center gap-2 mb-2">
+                      <TrendingUp className="w-4 h-4 text-purple-600" />
+                      <span className="text-xs font-semibold text-gray-600">Receita</span>
+                    </div>
+                    <div className="text-2xl font-bold text-gray-900">
+                      {stats.totalRevenue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0 })}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">no total</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* PREFERENCES TAB */}
+          {activeTab === 'preferences' && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-5">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">Preferências do Sistema</h2>
+                <p className="text-gray-600">Personalize sua experiência no sistema</p>
+              </div>
+
+              {/* Notifications */}
+              <div className="bg-gradient-to-br from-slate-50 to-gray-50 rounded-2xl p-6 border border-gray-200">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-3 bg-blue-100 rounded-xl">
+                    <Bell className="w-6 h-6 text-blue-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-900">Notificações</h3>
+                    <p className="text-sm text-gray-600">Configure como deseja ser notificado</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-4 bg-white rounded-lg border border-gray-200">
+                    <div>
+                      <p className="font-medium text-gray-900">Notificações por Email</p>
+                      <p className="text-sm text-gray-500">Receba atualizações importantes por email</p>
+                    </div>
+                    <button
+                      onClick={() => setEmailNotifications(!emailNotifications)}
+                      className={`relative w-14 h-7 rounded-full transition-colors ${emailNotifications ? 'bg-orange-600' : 'bg-gray-300'
+                        }`}
+                    >
+                      <div
+                        className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full transition-transform ${emailNotifications ? 'translate-x-7' : 'translate-x-0'
+                          }`}
+                      ></div>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between p-4 bg-white rounded-lg border border-gray-200">
+                    <div>
+                      <p className="font-medium text-gray-900">Alertas de Pedidos</p>
+                      <p className="text-sm text-gray-500">Seja notificado quando receber novos pedidos</p>
+                    </div>
+                    <button
+                      onClick={() => setOrderAlerts(!orderAlerts)}
+                      className={`relative w-14 h-7 rounded-full transition-colors ${orderAlerts ? 'bg-orange-600' : 'bg-gray-300'
+                        }`}
+                    >
+                      <div
+                        className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full transition-transform ${orderAlerts ? 'translate-x-7' : 'translate-x-0'
+                          }`}
+                      ></div>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between p-4 bg-white rounded-lg border border-gray-200">
+                    <div>
+                      <p className="font-medium text-gray-900">Alertas de Estoque Baixo</p>
+                      <p className="text-sm text-gray-500">Receba avisos quando o estoque estiver baixo</p>
+                    </div>
+                    <button
+                      onClick={() => setStockAlerts(!stockAlerts)}
+                      className={`relative w-14 h-7 rounded-full transition-colors ${stockAlerts ? 'bg-orange-600' : 'bg-gray-300'
+                        }`}
+                    >
+                      <div
+                        className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full transition-transform ${stockAlerts ? 'translate-x-7' : 'translate-x-0'
+                          }`}
+                      ></div>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Theme */}
+              <div className="bg-gradient-to-br from-slate-50 to-gray-50 rounded-2xl p-6 border border-gray-200">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-3 bg-purple-100 rounded-xl">
+                    {theme === 'light' ? (
+                      <Sun className="w-6 h-6 text-purple-600" />
+                    ) : (
+                      <Moon className="w-6 h-6 text-purple-600" />
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-900">Aparência</h3>
+                    <p className="text-sm text-gray-600">Personalize o tema do sistema</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <button
+                    onClick={() => setTheme('light')}
+                    className={`p-6 rounded-xl border-2 transition-all ${theme === 'light'
+                      ? 'border-orange-600 bg-orange-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                  >
+                    <Sun className="w-8 h-8 mx-auto mb-3 text-orange-600" />
+                    <p className="font-semibold text-gray-900">Claro</p>
+                    <p className="text-xs text-gray-500 mt-1">Tema padrão</p>
+                  </button>
+
+                  <button
+                    onClick={() => setTheme('dark')}
+                    className={`p-6 rounded-xl border-2 transition-all relative ${theme === 'dark'
+                      ? 'border-orange-600 bg-orange-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                  >
+                    <div className="absolute top-2 right-2 text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full font-medium">
+                      Em breve
+                    </div>
+                    <Moon className="w-8 h-8 mx-auto mb-3 text-gray-400" />
+                    <p className="font-semibold text-gray-900">Escuro</p>
+                    <p className="text-xs text-gray-500 mt-1">Tema escuro</p>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* DATA TAB */}
+          {activeTab === 'data' && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-5">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">Gerenciamento de Dados</h2>
+                <p className="text-gray-600">Faça backup ou gerencie seus dados do sistema</p>
+              </div>
+
+              {/* Export Data */}
+              <div
+                onClick={handleExportData}
+                className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-6 border-2 border-blue-200 hover:border-blue-400 cursor-pointer transition-all hover:shadow-lg group"
+              >
+                <div className="flex items-start gap-4">
+                  <div className="p-4 bg-blue-600 rounded-xl group-hover:scale-110 transition-transform">
+                    <Download className="w-8 h-8 text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-xl font-bold text-gray-900 mb-2">Fazer Backup Completo</h3>
+                    <p className="text-gray-700 mb-4">
+                      Baixe um arquivo JSON com todos os seus dados: produtos, ingredientes, clientes,
+                      pedidos e configurações. Mantenha seus dados seguros!
+                    </p>
+                    <div className="flex items-center gap-6 text-sm text-gray-600">
+                      <div className="flex items-center gap-2">
+                        <Package className="w-4 h-4" />
+                        <span>{stats.totalProducts} Produtos</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Users className="w-4 h-4" />
+                        <span>{stats.totalCustomers} Clientes</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4" />
+                        <span>{stats.totalOrders} Pedidos</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl font-semibold group-hover:bg-blue-700 transition-colors">
+                    <Download size={18} />
+                    Baixar
+                  </div>
+                </div>
+              </div>
+
+              {/* Import Data */}
+              <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-6 border-2 border-green-200">
+                <div className="flex items-start gap-4">
+                  <div className="p-4 bg-green-600 rounded-xl">
+                    <Upload className="w-8 h-8 text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-xl font-bold text-gray-900 mb-2">Importar Dados</h3>
+                    <p className="text-gray-700 mb-4">
+                      Restaure um backup anterior ou importe dados de outro sistema.
+                    </p>
+                    <button className="flex items-center gap-2 px-6 py-2.5 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition-colors">
+                      <Upload size={18} />
+                      Selecionar Arquivo
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Danger Zone */}
+              <div className="bg-gradient-to-br from-red-50 to-pink-50 rounded-2xl p-6 border-2 border-red-200">
+                <div className="flex items-start gap-4">
+                  <div className="p-4 bg-red-600 rounded-xl">
+                    <AlertTriangle className="w-8 h-8 text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-xl font-bold text-red-900 mb-2">Zona de Perigo</h3>
+                    <p className="text-red-700 mb-4">
+                      Ações irreversíveis que afetam seus dados permanentemente.
+                    </p>
+                    <div className="space-y-3">
+                      <button className="w-full flex items-center justify-between p-4 bg-white rounded-lg border border-red-200 hover:border-red-400 hover:bg-red-50 transition-all text-left">
+                        <div>
+                          <p className="font-semibold text-gray-900">Resetar Todos os Dados</p>
+                          <p className="text-sm text-gray-600">Apaga todos os seus dados do sistema</p>
+                        </div>
+                        <Trash2 className="w-5 h-5 text-red-600" />
+                      </button>
+
+                      <button className="w-full flex items-center justify-between p-4 bg-white rounded-lg border border-red-200 hover:border-red-400 hover:bg-red-50 transition-all text-left">
+                        <div>
+                          <p className="font-semibold text-gray-900">Excluir Conta Permanentemente</p>
+                          <p className="text-sm text-gray-600">Remove sua conta e todos os dados associados</p>
+                        </div>
+                        <Trash2 className="w-5 h-5 text-red-600" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Data Privacy */}
+              <div className="bg-gradient-to-br from-slate-50 to-gray-50 rounded-2xl p-6 border border-gray-200">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-3 bg-gray-700 rounded-xl">
+                    <Shield className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-900">Privacidade dos Dados</h3>
+                    <p className="text-sm text-gray-600">Seus dados são criptografados e seguros</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="p-4 bg-white rounded-lg border border-gray-200 text-center">
+                    <CheckCircle className="w-6 h-6 text-green-600 mx-auto mb-2" />
+                    <p className="font-semibold text-gray-900 text-sm">Criptografia SSL</p>
+                  </div>
+                  <div className="p-4 bg-white rounded-lg border border-gray-200 text-center">
+                    <CheckCircle className="w-6 h-6 text-green-600 mx-auto mb-2" />
+                    <p className="font-semibold text-gray-900 text-sm">Backup Automático</p>
+                  </div>
+                  <div className="p-4 bg-white rounded-lg border border-gray-200 text-center">
+                    <CheckCircle className="w-6 h-6 text-green-600 mx-auto mb-2" />
+                    <p className="font-semibold text-gray-900 text-sm">LGPD Compliant</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

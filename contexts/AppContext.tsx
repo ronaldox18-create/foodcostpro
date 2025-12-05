@@ -505,7 +505,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         notes: order.notes,
         delivery_type: order.deliveryType || order.delivery_type,
         delivery_address: order.deliveryAddress || order.delivery_address,
-        phone: order.phone
+        phone: order.phone,
+        // Novos campos do PDV
+        cash_register_id: (order as any).cashRegisterId || (order as any).cash_register_id,
+        discount: (order as any).discount,
+        discount_percent: (order as any).discountPercent,
+        service_charge: (order as any).serviceCharge,
+        tip: (order as any).tip,
+        subtotal: (order as any).subtotal,
+        change_given: (order as any).changeGiven
       }]).select().single();
 
       if (error) {
