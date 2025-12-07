@@ -115,6 +115,11 @@ export interface Order {
   phone?: string;
   delivery_type?: 'delivery' | 'pickup';
   delivery_address?: string;
+  subtotal?: number;
+  discount?: number;
+  serviceCharge?: number;
+  tip?: number;
+  couvert?: number;
 }
 
 // --- NOVO: Sistema de Mesas ---

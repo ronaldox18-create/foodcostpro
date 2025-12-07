@@ -102,7 +102,7 @@ const CustomerOrders: React.FC = () => {
             confirmed: { label: 'Confirmado', icon: CheckCircle, color: 'text-blue-600', bgColor: 'bg-blue-100' },
             preparing: { label: 'Preparando', icon: Package, color: 'text-orange-600', bgColor: 'bg-orange-100' },
             ready: { label: 'Pronto', icon: CheckCircle, color: 'text-green-600', bgColor: 'bg-green-100' },
-            delivered: { label: 'Entregue', icon: Truck, color: 'text-gray-600', bgColor: 'bg-gray-100' },
+            delivered: { label: 'Saiu para Entrega', icon: Truck, color: 'text-blue-600', bgColor: 'bg-blue-100' },
             completed: { label: 'Concluído', icon: CheckCircle, color: 'text-green-600', bgColor: 'bg-green-100' },
             cancelled: { label: 'Cancelado', icon: XCircle, color: 'text-red-600', bgColor: 'bg-red-100' }
         };

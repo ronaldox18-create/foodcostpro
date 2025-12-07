@@ -62,6 +62,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Gestão</p>
           </div>
           <NavItem to="/pdv" icon={CreditCard} label="PDV (Balcão)" active={location.pathname === '/pdv'} />
+          <NavItem to="/tables" icon={LayoutGrid} label="Gestão de Mesas" active={location.pathname === '/tables'} />
           <NavItem to="/dashboard" icon={LayoutDashboard} label="Dashboard" active={location.pathname === '/dashboard'} />
           <NavItem to="/all-orders" icon={ClipboardList} label="Todos os Pedidos" active={location.pathname === '/all-orders'} />
           <NavItem to="/customers" icon={Users} label="Clientes (CRM)" active={location.pathname === '/customers'} />
@@ -118,6 +119,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-2">
               <NavItem to="/pdv" icon={CreditCard} label="PDV (Balcão)" active={location.pathname === '/pdv'} />
+              <NavItem to="/tables" icon={LayoutGrid} label="Gestão de Mesas" active={location.pathname === '/tables'} />
               <NavItem to="/dashboard" icon={LayoutDashboard} label="Dashboard" active={location.pathname === '/dashboard'} />
               <NavItem to="/all-orders" icon={ClipboardList} label="Todos os Pedidos" active={location.pathname === '/all-orders'} />
               <NavItem to="/customers" icon={Users} label="Clientes" active={location.pathname === '/customers'} />
@@ -136,10 +138,40 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           </div>
         )}
 
-        <div className="flex-1 overflow-auto p-4 md:p-8 custom-scrollbar">
+        <div className="flex-1 overflow-auto p-4 md:p-8 pb-24 md:pb-8 custom-scrollbar">
           <div className="max-w-7xl mx-auto animate-in fade-in duration-500 slide-in-from-bottom-4">
             {children}
           </div>
+        </div>
+
+        {/* Mobile Bottom Navigation - Native App Feel */}
+        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-2 flex justify-between items-end z-40 pb-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+          <Link to="/dashboard" className={`flex flex-col items-center gap-1 p-2 rounded-lg transition-colors ${location.pathname === '/dashboard' ? 'text-orange-600' : 'text-gray-400 hover:text-gray-600'}`}>
+            <LayoutDashboard size={24} strokeWidth={location.pathname === '/dashboard' ? 2.5 : 2} />
+            <span className="text-[10px] font-medium">Início</span>
+          </Link>
+
+          <Link to="/pdv" className={`flex flex-col items-center gap-1 p-2 rounded-lg transition-colors ${location.pathname === '/pdv' ? 'text-orange-600' : 'text-gray-400 hover:text-gray-600'}`}>
+            <CreditCard size={24} strokeWidth={location.pathname === '/pdv' ? 2.5 : 2} />
+            <span className="text-[10px] font-medium">PDV</span>
+          </Link>
+
+          {/* Central AI Button */}
+          <div className="relative -top-5">
+            <Link to="/advisor" className="flex items-center justify-center w-14 h-14 bg-gradient-to-br from-violet-600 to-fuchsia-600 rounded-full text-white shadow-lg shadow-violet-200 border-4 border-gray-50 transform active:scale-95 transition-transform">
+              <Sparkles size={24} fill="currentColor" className="text-white" />
+            </Link>
+          </div>
+
+          <Link to="/all-orders" className={`flex flex-col items-center gap-1 p-2 rounded-lg transition-colors ${location.pathname === '/all-orders' ? 'text-orange-600' : 'text-gray-400 hover:text-gray-600'}`}>
+            <ClipboardList size={24} strokeWidth={location.pathname === '/all-orders' ? 2.5 : 2} />
+            <span className="text-[10px] font-medium">Pedidos</span>
+          </Link>
+
+          <button onClick={() => setMobileMenuOpen(true)} className={`flex flex-col items-center gap-1 p-2 rounded-lg transition-colors ${mobileMenuOpen ? 'text-orange-600' : 'text-gray-400 hover:text-gray-600'}`}>
+            <Menu size={24} />
+            <span className="text-[10px] font-medium">Menu</span>
+          </button>
         </div>
       </main>
     </div>

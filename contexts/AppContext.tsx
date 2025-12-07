@@ -43,6 +43,7 @@ interface AppContextType {
   handleStockUpdate: (items: OrderItem[]) => Promise<void>;
   checkStockAvailability: (items: OrderItem[]) => Promise<{ available: boolean; missingItems: string[] }>;
   fixTableStatuses: () => Promise<void>;
+  refreshOrders: () => Promise<void>;
 }
 
 const defaultSettings: AppSettings = {
@@ -66,6 +67,43 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [categories, setCategories] = useState<string[]>([]);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [loading, setLoading] = useState(false);
+
+  const refreshOrders = async () => {
+    if (!user) return;
+    try {
+      const { data: orderData } = await supabase.from('orders').select(`*, order_items (*)`).eq('user_id', user.id).order('date', { ascending: false });
+      if (orderData) {
+        const formattedOrders = orderData.map(o => ({
+          id: o.id,
+          customerId: o.customer_id || 'guest',
+          customerName: o.customer_name,
+          totalAmount: o.total_amount,
+          paymentMethod: o.payment_method,
+          status: o.status,
+          date: o.date,
+          tableId: o.table_id,
+          tableNumber: o.table_number,
+          notes: o.notes,
+          deliveryType: o.delivery_type,
+          deliveryAddress: o.delivery_address,
+          phone: o.phone,
+          delivery_type: o.delivery_type,
+          delivery_address: o.delivery_address,
+          items: o.order_items.map((oi: any) => ({
+            productId: oi.product_id,
+            productName: oi.product_name,
+            quantity: oi.quantity,
+            unitPrice: oi.price,
+            total: oi.total,
+            addedAt: oi.added_at || new Date().toISOString()
+          }))
+        }));
+        setOrders(formattedOrders);
+      }
+    } catch (e) {
+      console.error('Error refreshing orders:', e);
+    }
+  };
 
   useEffect(() => {
     if (!user) {
@@ -840,7 +878,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           }));
         }
       },
-      checkStockAvailability
+      checkStockAvailability,
+      refreshOrders
     }}>
       {children}
     </AppContext.Provider>

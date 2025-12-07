@@ -5,11 +5,13 @@ import {
     ShoppingCart, Search, User, DollarSign, Receipt,
     Clock, TrendingUp, Package, X, Plus, Minus,
     Calculator, AlertCircle, Award, Settings, ChevronRight,
-    Zap, CreditCard, Sparkles, ShoppingBag, Users, BarChart3
+    Zap, CreditCard, Sparkles, ShoppingBag, Users, BarChart3, Printer, ChefHat
 } from 'lucide-react';
-import { OrderItem, Customer, Product, CashRegister, POSPayment } from '../types';
+import { OrderItem, Customer, Product, CashRegister, POSPayment, Order } from '../types';
 import POSPaymentModal from '../components/POSPaymentModal';
 import CashRegisterModal from '../components/CashRegisterModal';
+import OrderSuccessModal from '../components/OrderSuccessModal';
+import BillConferenceModal from '../components/BillConferenceModal';
 import { supabase } from '../utils/supabaseClient';
 
 const PDV: React.FC = () => {
@@ -23,6 +25,11 @@ const PDV: React.FC = () => {
     const [showCustomerModal, setShowCustomerModal] = useState(false);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [showCashRegisterModal, setShowCashRegisterModal] = useState(false);
+    const [showConferenceModal, setShowConferenceModal] = useState(false);
+
+    // Novo estado para sucesso/impressão
+    const [lastOrder, setLastOrder] = useState<Order | null>(null);
+    const [showSuccessModal, setShowSuccessModal] = useState(false);
 
     // Caixa
     const [currentCashRegister, setCurrentCashRegister] = useState<CashRegister | null>(null);
@@ -161,6 +168,26 @@ const PDV: React.FC = () => {
     }, [cart]);
 
     // Finalizar venda
+    const handlePrintKitchen = () => {
+        if (cart.length === 0) return;
+        const receiptWindow = window.open('', '', 'width=350,height=600');
+        if (!receiptWindow) return;
+
+        const html = `<html>
+        <head>
+                <style>
+                body { font-family: 'Courier New', monospace; font-size: 14px; margin: 0; padding: 15px; width: 80mm; }
+                </style>
+        </head><body>
+            <h2 style="text-align:center; margin-bottom: 5px;">COZINHA - BALCÃO</h2>
+            <p style="text-align:center; margin-top: 0; border-bottom: 2px solid black; padding-bottom: 10px;">${new Date().toLocaleString('pt-BR')}</p>
+            ${cart.map(i => `<div style="display:flex; justify-content:space-between; margin-bottom: 5px; font-weight:bold; font-size: 16px;"><span>${i.quantity}x</span> <span>${i.productName}</span></div>`).join('')}
+            <script>window.onload=function(){window.focus(); setTimeout(() => { window.print(); window.close(); }, 250);}</script>
+        </body></html>`;
+        receiptWindow.document.write(html);
+        receiptWindow.document.close();
+    };
+
     const handleCheckout = async () => {
         if (!currentCashRegister) {
             alert('❌ Você precisa abrir o caixa antes de realizar vendas!');
@@ -188,11 +215,12 @@ const PDV: React.FC = () => {
         customerData: Customer | null,
         discount: number,
         serviceCharge: number,
-        tip: number
+        tip: number,
+        couvert: number
     ) => {
         try {
             const subtotal = cartTotal;
-            const totalWithAdditions = subtotal + (subtotal * serviceCharge / 100) + tip - discount;
+            const totalWithAdditions = subtotal + (subtotal * serviceCharge / 100) + tip + couvert - discount;
 
             const order: any = {
                 id: crypto.randomUUID(),
@@ -204,6 +232,7 @@ const PDV: React.FC = () => {
                 discount: discount,
                 serviceCharge: serviceCharge,
                 tip: tip,
+                couvert: couvert,
                 paymentMethod: payments[0].method,
                 date: new Date().toISOString(),
                 status: 'completed' as const,
@@ -212,16 +241,27 @@ const PDV: React.FC = () => {
             };
 
             await addOrder(order);
-            setCart([]);
-            setSelectedCustomer(null);
-            setShowPaymentModal(false);
-            loadCashRegisterStats(currentCashRegister!.id);
 
-            alert('✅ Venda realizada com sucesso!');
+            // Baixa de estoque baseada na ficha técnica
+            await handleStockUpdate(cart);
+
+            // Não limpa carrinho imediatamente, mostra modal de sucesso
+            setShowPaymentModal(false);
+            setLastOrder(order);
+            setShowSuccessModal(true);
+
+            loadCashRegisterStats(currentCashRegister!.id);
         } catch (error) {
             console.error('Erro ao processar venda:', error);
             alert('❌ Erro ao processar venda!');
         }
+    };
+
+    const handleNewOrder = () => {
+        setCart([]);
+        setSelectedCustomer(null);
+        setLastOrder(null);
+        setShowSuccessModal(false);
     };
 
     // Se não houver caixa aberto
@@ -361,8 +401,8 @@ const PDV: React.FC = () => {
                                         key={cat}
                                         onClick={() => setSelectedCategory(cat)}
                                         className={`px-4 py-2 rounded-xl font-medium whitespace-nowrap transition-all ${selectedCategory === cat
-                                                ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg'
-                                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                            ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg'
+                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                                             }`}
                                     >
                                         {cat === 'all' ? 'Todos' : cat}
@@ -405,8 +445,8 @@ const PDV: React.FC = () => {
                             >
                                 <div className="flex items-center gap-3">
                                     <div className={`w-12 h-12 rounded-full flex items-center justify-center ${selectedCustomer
-                                            ? 'bg-gradient-to-br from-blue-500 to-cyan-500'
-                                            : 'bg-gradient-to-br from-gray-400 to-gray-500'
+                                        ? 'bg-gradient-to-br from-blue-500 to-cyan-500'
+                                        : 'bg-gradient-to-br from-gray-400 to-gray-500'
                                         }`}>
                                         {selectedCustomer ? (
                                             <Award className="w-6 h-6 text-white" />
@@ -512,6 +552,25 @@ const PDV: React.FC = () => {
                                     </span>
                                 </div>
 
+                                <div className="grid grid-cols-2 gap-3 mb-3">
+                                    <button
+                                        onClick={handlePrintKitchen}
+                                        disabled={cart.length === 0}
+                                        className="py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                                    >
+                                        <ChefHat size={18} />
+                                        Cozinha
+                                    </button>
+                                    <button
+                                        onClick={() => setShowConferenceModal(true)}
+                                        disabled={cart.length === 0}
+                                        className="py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                                    >
+                                        <Printer size={18} />
+                                        Conf.
+                                    </button>
+                                </div>
+
                                 <button
                                     onClick={handleCheckout}
                                     disabled={cart.length === 0}
@@ -538,6 +597,15 @@ const PDV: React.FC = () => {
                 />
             )}
 
+            {showConferenceModal && (
+                <BillConferenceModal
+                    isOpen={showConferenceModal}
+                    onClose={() => setShowConferenceModal(false)}
+                    cart={cart}
+                    tableNumber={undefined} // Balcão não tem número de mesa
+                />
+            )}
+
             <CashRegisterModal
                 key={`cash-register-${showCashRegisterModal}`}
                 isOpen={showCashRegisterModal}
@@ -550,6 +618,13 @@ const PDV: React.FC = () => {
                 onCashRegisterOpened={() => {
                     loadCurrentCashRegister();
                 }}
+            />
+
+            <OrderSuccessModal
+                isOpen={showSuccessModal}
+                onClose={() => setShowSuccessModal(false)}
+                order={lastOrder}
+                onNewOrder={handleNewOrder}
             />
 
             {/* Customer Modal */}

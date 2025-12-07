@@ -44,7 +44,7 @@ export const useOrderNotification = () => {
 export const OrderNotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const { user } = useAuth();
     // Safe to use useApp here because OrderNotificationProvider is inside AppProvider in App.tsx
-    const { handleStockUpdate, checkStockAvailability } = useApp();
+    const { handleStockUpdate, checkStockAvailability, refreshOrders } = useApp();
 
     const [newOrder, setNewOrder] = useState<Order | null>(null);
     const [isProcessing, setIsProcessing] = useState(false); // Prevenir duplo clique
@@ -308,6 +308,7 @@ export const OrderNotificationProvider: React.FC<{ children: React.ReactNode }> 
             }
 
             console.log('✅ Order accepted successfully');
+            await refreshOrders();
             dismissNotification();
         } catch (error) {
             console.error('❌ Error accepting order:', error);
@@ -334,6 +335,7 @@ export const OrderNotificationProvider: React.FC<{ children: React.ReactNode }> 
 
             if (error) throw error;
             console.log('✅ Order rejected successfully');
+            await refreshOrders();
             dismissNotification();
         } catch (error) {
             console.error('❌ Error rejecting order:', error);

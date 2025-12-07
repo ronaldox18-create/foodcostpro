@@ -1,68 +1,65 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { Product, OrderItem } from '../types';
+import { Product, OrderItem, POSPayment, Customer, Order } from '../types';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
-    Search,
-    Plus,
-    Minus,
-    Trash2,
-    Clock,
-    ArrowLeft,
-    ChefHat,
-    XCircle,
-    Printer,
-    Receipt,
-    CheckCircle2,
-    AlertCircle,
-    Package
+    Search, Plus, Minus, Trash2, Clock, ArrowLeft, ChefHat, XCircle,
+    Printer, Receipt, CheckCircle2, AlertCircle, Package, Utensils,
+    MoreVertical, CreditCard, DollarSign
 } from 'lucide-react';
 import { formatCurrency } from '../utils/calculations';
+import POSPaymentModal from '../components/POSPaymentModal';
+import BillConferenceModal from '../components/BillConferenceModal';
 
 const TableService: React.FC = () => {
-    const { products, orders, tables, addOrder, updateOrder, checkStockAvailability } = useApp();
+    const { products, orders, tables, addOrder, updateOrder, checkStockAvailability, handleStockUpdate } = useApp();
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
 
-    // Parâmetros da Mesa
+    // Parâmetros
     const tableId = searchParams.get('tableId');
     const existingOrderId = searchParams.get('orderId');
 
-    // Estado do Carrinho e Interface
+    // Estado Local
     const [cart, setCart] = useState<OrderItem[]>([]);
-    const [originalItems, setOriginalItems] = useState<OrderItem[]>([]); // Items já salvos no banco
+    const [originalItems, setOriginalItems] = useState<OrderItem[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('Todos');
-    const [isDrawerOpen, setIsDrawerOpen] = useState(false); // Estado para controlar o drawer
 
-    // Modais
+    // UI States
+    const [isDrawerOpen, setIsDrawerOpen] = useState(false); // Mobile Drawer
     const [showKitchenModal, setShowKitchenModal] = useState(false);
     const [showCancelModal, setShowCancelModal] = useState(false);
+    const [showPaymentModal, setShowPaymentModal] = useState(false);
+    const [showConferenceModal, setShowConferenceModal] = useState(false);
     const [isSending, setIsSending] = useState(false);
     const [lastKitchenOrderItems, setLastKitchenOrderItems] = useState<OrderItem[]>([]);
 
-    // Info da Mesa
+    // Dados Computados
     const currentTable = useMemo(() => tables.find(t => t.id === tableId), [tables, tableId]);
 
-    // Buscar pedido com fallback
     const currentOrder = useMemo(() => {
-        // Primeiro tenta pelo ID exato
         let order = orders.find(o => o.id === existingOrderId);
-
-        // Se não encontrou mas tem tableId, procura pedido aberto dessa mesa
         if (!order && tableId) {
             order = orders.find(o => o.tableId === tableId && o.status === 'open');
         }
-
         return order;
     }, [orders, existingOrderId, tableId]);
 
-    // Carregar pedido existente
+    // Calcular totais
+    const cartTotal = cart.reduce((acc, item) => acc + item.total, 0);
+    const itemCount = cart.reduce((acc, item) => acc + item.quantity, 0);
+    const waitingForKitchen = cart.length > originalItems.length || cart.some(item => {
+        const original = originalItems.find(i => i.productId === item.productId);
+        return !original || item.quantity > original.quantity;
+    });
+
+    // Effect: Carregar Pedido
     useEffect(() => {
-        if (existingOrderId && currentOrder && currentOrder.items) {
+        if (currentOrder && currentOrder.items) {
             setCart(currentOrder.items);
-            setOriginalItems(currentOrder.items); // Salva o estado inicial para comparação
-        } else if (!existingOrderId) {
+            setOriginalItems(currentOrder.items);
+        } else if (!existingOrderId && !currentOrder) {
             setCart([]);
             setOriginalItems([]);
         }
@@ -74,7 +71,7 @@ const TableService: React.FC = () => {
         return ['Todos', ...Array.from(cats)];
     }, [products]);
 
-    // Filtros
+    // Filtragem de Produtos
     const filteredProducts = useMemo(() => {
         return products.filter(p => {
             const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
@@ -83,10 +80,7 @@ const TableService: React.FC = () => {
         });
     }, [products, searchTerm, selectedCategory]);
 
-    const cartTotal = cart.reduce((acc, item) => acc + item.total, 0);
-    const itemCount = cart.reduce((acc, item) => acc + item.quantity, 0);
-
-    // Adicionar ao Carrinho
+    // Gestão do Carrinho
     const addToCart = (product: Product) => {
         setCart(prev => {
             const existing = prev.find(item => item.productId === product.id);
@@ -110,7 +104,7 @@ const TableService: React.FC = () => {
 
     const removeFromCart = (productId: string) => {
         setCart(prev => prev.filter(item => item.productId !== productId));
-        if (cart.length <= 1) setIsDrawerOpen(false); // Fecha drawer se remover último item
+        if (cart.length <= 1) setIsDrawerOpen(false);
     };
 
     const updateQuantity = (productId: string, delta: number) => {
@@ -125,11 +119,11 @@ const TableService: React.FC = () => {
         });
     };
 
-    // Enviar para Cozinha
+    // Ações Principais
     const handleSendToKitchen = async () => {
         if (cart.length === 0 || !tableId || !currentTable) return;
-
         setIsSending(true);
+
         try {
             const orderData = {
                 id: currentOrder?.id || crypto.randomUUID(),
@@ -144,437 +138,325 @@ const TableService: React.FC = () => {
                 tableNumber: currentTable.number
             };
 
-            // CALCULAR DIFERENÇA (Apenas novos itens para impressão)
             const newItemsToPrint: OrderItem[] = [];
-
             cart.forEach(cartItem => {
                 const originalItem = originalItems.find(oi => oi.productId === cartItem.productId);
-
                 if (!originalItem) {
-                    // Item totalmente novo
                     newItemsToPrint.push(cartItem);
                 } else if (cartItem.quantity > originalItem.quantity) {
-                    // Quantidade aumentou (adicionar apenas a diferença)
                     const diffQty = cartItem.quantity - originalItem.quantity;
-                    newItemsToPrint.push({
-                        ...cartItem,
-                        quantity: diffQty,
-                        total: diffQty * cartItem.unitPrice
-                    });
+                    newItemsToPrint.push({ ...cartItem, quantity: diffQty, total: diffQty * cartItem.unitPrice });
                 }
             });
 
-            // Se não houver novos itens, mas o usuário clicou em enviar, 
-            // pode ser que ele queira reimprimir tudo ou houve algum erro.
-            // Nesse caso, se a lista estiver vazia, usamos o cart todo (fallback),
-            // MAS idealmente queremos imprimir só o novo.
-            // Se newItemsToPrint for vazio, significa que não houve mudança.
-
             if (newItemsToPrint.length === 0 && cart.length > 0) {
-                // Se não tem nada novo, avisa ou imprime tudo? 
-                // Vamos assumir que se ele clicou, ele quer reenviar tudo se não tiver nada novo,
-                // OU melhor: avisar que não há novos itens.
-                // Mas para simplificar e evitar bloqueio, se não tiver novos, imprime tudo (reimpressão).
-                console.log('⚠️ Nenhum item novo detectado. Usando carrinho completo para impressão.');
                 setLastKitchenOrderItems(cart);
             } else {
-                console.log('✅ Novos itens detectados para cozinha:', newItemsToPrint);
-
-                // VERIFICAR ESTOQUE DOS NOVOS ITENS
                 const { available, missingItems } = await checkStockAvailability(newItemsToPrint);
                 if (!available) {
-                    alert(`⚠️ NÃO É POSSÍVEL ENVIAR O PEDIDO!\n\nEstoque insuficiente para:\n${missingItems.join('\n')}\n\nPor favor, remova os itens sem estoque ou faça a reposição.`);
+                    alert(`Estoque insuficiente:\n${missingItems.join('\n')}`);
                     setIsSending(false);
                     return;
                 }
-
                 setLastKitchenOrderItems(newItemsToPrint);
             }
 
-            // Atualizar originalItems para o próximo ciclo (após salvar com sucesso)
-            // Faremos isso implicitamente pois o updateOrder vai atualizar o currentOrder,
-            // que vai disparar o useEffect e atualizar o originalItems.
+            if (currentOrder?.id) await updateOrder(orderData);
+            else await addOrder(orderData);
 
-            if (currentOrder?.id) {
-                await updateOrder(orderData);
-            } else {
-                await addOrder(orderData);
+            // Baixar estoque dos itens enviados para cozinha
+            if (newItemsToPrint.length > 0) {
+                await handleStockUpdate(newItemsToPrint);
             }
 
             setShowKitchenModal(true);
         } catch (error) {
-            console.error('Erro ao enviar pedido:', error);
-            alert('Erro ao enviar pedido para a cozinha. Tente novamente.');
+            console.error('Erro ao enviar:', error);
+            alert('Erro ao enviar pedido.');
         } finally {
             setIsSending(false);
         }
     };
 
-    // Cancelar Mesa
-    const handleCancelTable = async () => {
-        if (!currentOrder?.id || !tableId || !currentTable) return;
+    const handleConfirmPayment = async (
+        payments: POSPayment[],
+        customer: Customer | null,
+        discount: number,
+        serviceChargePercent: number,
+        tip: number,
+        couvert: number
+    ) => {
+        if (!currentOrder?.id) return;
+
+        const subtotal = cart.reduce((acc, item) => acc + item.total, 0);
+        const serviceValue = (subtotal * serviceChargePercent) / 100;
+        const finalTotalAmount = subtotal + serviceValue + tip + couvert - discount;
+
+        const updatedOrder: any = {
+            ...currentOrder,
+            status: 'completed',
+            totalAmount: finalTotalAmount,
+            paymentMethod: payments.length > 1 ? 'multiple' : payments[0].method,
+            items: cart,
+            couvert: couvert
+        };
 
         try {
-            const orderToCancel = {
-                id: currentOrder.id,
-                customerId: 'guest',
-                customerName: 'Cancelado',
-                items: [],
-                totalAmount: 0,
-                paymentMethod: 'money' as const,
-                status: 'canceled' as const,
-                date: new Date().toISOString(),
-                tableId: tableId,
-                tableNumber: currentTable.number
-            };
-
-            await updateOrder(orderToCancel);
+            await updateOrder(updatedOrder);
+            setShowPaymentModal(false);
             navigate('/tables');
         } catch (error) {
-            console.error('Erro ao cancelar mesa:', error);
-            alert('Erro ao cancelar mesa. Tente novamente.');
+            console.error("Erro ao finalizar:", error);
+            alert("Erro ao finalizar mesa.");
         }
     };
 
-    // Imprimir Comanda da Cozinha
+    const handleCancelTable = async () => {
+        if (!currentOrder?.id || !tableId) return;
+        try {
+            await updateOrder({ ...currentOrder, status: 'canceled', totalAmount: 0 });
+            navigate('/tables');
+        } catch (e) { console.error(e); }
+    };
+
     const printKitchenTicket = () => {
-        // Usar items salvos se disponíveis, senão usar o cart atual
         const itemsToPrint = lastKitchenOrderItems.length > 0 ? lastKitchenOrderItems : cart;
-
-        console.log('👨‍🍳 [TableService] Imprimindo comanda de cozinha...');
-        console.log('📦 Items para imprimir:', itemsToPrint.length);
-
-        if (itemsToPrint.length === 0) {
-            console.error('❌ Nenhum item para imprimir!');
-            alert('Erro: Não há items para imprimir.');
-            return;
-        }
-
         const receiptWindow = window.open('', '', 'width=350,height=600');
         if (!receiptWindow) return;
 
-        const dateStr = new Date().toLocaleString('pt-BR');
-        const itemsHtml = itemsToPrint.map(item => `
-      <div style="margin-bottom: 10px; border-bottom: 1px dashed #ccc; padding-bottom: 5px;">
-        <div style="font-size: 18px; font-weight: bold;">${item.quantity}x ${item.productName}</div>
-        ${item.addedAt ? `<div style="font-size: 12px; color: #666;">Hora: ${new Date(item.addedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div>` : ''}
-      </div>
-    `).join('');
-
-        const html = `
-      <html>
+        const html = `<html>
         <head>
-          <title>Cozinha - Mesa ${currentTable?.number}</title>
-          <style>
-            body { font-family: 'Courier New', monospace; font-size: 14px; margin: 0; padding: 15px; width: 80mm; }
-            .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 10px; }
-            .title { font-size: 28px; font-weight: 900; margin-bottom: 5px; }
-            .table { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <div class="title">🍳 COZINHA</div>
-            <div class="table">MESA ${currentTable?.number || '-'}</div>
-            <div>${dateStr}</div>
-          </div>
-          <div>${itemsHtml}</div>
-          <script>window.onload = function() { window.print(); }</script>
-        </body>
-      </html>
-    `;
+             <style>
+                body { font-family: 'Courier New', monospace; font-size: 14px; margin: 0; padding: 15px; width: 80mm; }
+             </style>
+        </head><body>
+            <h2 style="text-align:center; margin-bottom: 5px;">COZINHA - MESA ${currentTable?.number}</h2>
+            <p style="text-align:center; margin-top: 0; border-bottom: 2px solid black; padding-bottom: 10px;">${new Date().toLocaleString('pt-BR')}</p>
+            ${itemsToPrint.map(i => `<div style="display:flex; justify-content:space-between; margin-bottom: 5px; font-weight:bold; font-size: 16px;"><span>${i.quantity}x</span> <span>${i.productName}</span></div>`).join('')}
+            <script>window.onload=function(){window.focus(); setTimeout(() => { window.print(); window.close(); }, 250);}</script>
+        </body></html>`;
         receiptWindow.document.write(html);
         receiptWindow.document.close();
     };
 
-    const closeKitchenModal = () => {
-        setShowKitchenModal(false);
-        navigate('/tables');
+    const printBillConference = () => {
+        if (cart.length === 0) return;
+        setShowConferenceModal(true);
     };
 
-    if (!tableId || !currentTable) {
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-gray-50">
-                <div className="text-center">
-                    <AlertCircle size={64} className="text-red-500 mx-auto mb-4" />
-                    <h2 className="text-2xl font-bold text-gray-900 mb-2">Mesa não encontrada</h2>
-                    <p className="text-gray-500 mb-6">A mesa que você está tentando acessar não existe.</p>
-                    <button onClick={() => navigate('/tables')} className="px-6 py-3 bg-gray-900 text-white rounded-xl font-bold hover:bg-gray-800 transition">
-                        Voltar para Mesas
-                    </button>
-                </div>
-            </div>
-        );
-    }
+    if (!tableId || !currentTable) return <div className="p-10 text-center">Mesa não encontrada.</div>;
 
     return (
-        <div className="min-h-screen bg-gray-50 pb-safe">
-            {/* Header Mobile-First */}
-            <div className="bg-white border-b border-gray-200 sticky top-0 z-30 shadow-sm">
-                <div className="px-4 py-3">
-                    <div className="flex items-center justify-between mb-3">
-                        <button onClick={() => navigate('/tables')} className="p-2 hover:bg-gray-100 rounded-full transition -ml-2">
-                            <ArrowLeft size={24} className="text-gray-600" />
+        <div className="flex h-screen bg-gray-50 overflow-hidden font-sans">
+            <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+                <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shrink-0 z-10">
+                    <div className="flex items-center gap-4">
+                        <button onClick={() => navigate('/tables')} className="p-2 hover:bg-gray-100 rounded-full transition text-gray-500">
+                            <ArrowLeft size={24} />
                         </button>
-
-                        <div className="flex items-center gap-3">
-                            <div className="text-right">
-                                <div className="text-xs text-gray-400 font-bold uppercase">Mesa</div>
-                                <div className="text-2xl font-black text-gray-900">{currentTable.number}</div>
-                            </div>
-
+                        <div>
+                            <h1 className="text-2xl font-black text-gray-900 flex items-center gap-2">
+                                Mesa {String(currentTable.number).padStart(2, '0')}
+                                {currentOrder && <span className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded-full font-bold uppercase tracking-wider">Ocupada</span>}
+                            </h1>
                             {currentOrder && (
-                                <button
-                                    onClick={() => setShowCancelModal(true)}
-                                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition"
-                                    title="Cancelar Mesa"
-                                >
-                                    <XCircle size={24} />
-                                </button>
+                                <p className="text-xs text-gray-400 font-bold flex items-center gap-1">
+                                    <Clock size={12} /> Aberta às {new Date(currentOrder.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                </p>
                             )}
                         </div>
                     </div>
-
-                    {/* Tempo da Mesa */}
-                    {currentOrder && (
-                        <div className="flex items-center justify-between bg-orange-50 border border-orange-200 rounded-xl px-4 py-2">
-                            <div className="flex items-center gap-2">
-                                <Clock size={16} className="text-orange-600" />
-                                <span className="text-sm font-bold text-orange-900">Mesa Aberta</span>
-                            </div>
-                            <span className="text-sm text-orange-600 font-mono">
-                                {new Date(currentOrder.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                        </div>
-                    )}
                 </div>
 
-                {/* Busca e Categorias */}
-                <div className="px-4 pb-3 space-y-3">
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                        <input
-                            type="text"
-                            placeholder="Buscar produto..."
-                            value={searchTerm}
-                            onChange={e => setSearchTerm(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border-0 rounded-xl focus:ring-2 focus:ring-orange-200 text-gray-900 placeholder-gray-400"
-                        />
-                    </div>
-
-                    <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-                        {categories.map(cat => (
-                            <button
-                                key={cat}
-                                onClick={() => setSelectedCategory(cat)}
-                                className={`whitespace-nowrap px-4 py-2 rounded-full text-sm font-bold transition-all ${selectedCategory === cat
-                                    ? 'bg-orange-600 text-white shadow-md'
-                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                    }`}
-                            >
-                                {cat}
-                            </button>
-                        ))}
-                    </div>
+                <div className="bg-white px-6 pb-4 pt-0 border-b border-gray-100 flex gap-2 overflow-x-auto hide-scrollbar shrink-0">
+                    {categories.map(cat => (
+                        <button
+                            key={cat}
+                            onClick={() => setSelectedCategory(cat)}
+                            className={`px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all ${selectedCategory === cat
+                                ? 'bg-orange-600 text-white shadow-md shadow-orange-200'
+                                : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                                }`}
+                        >
+                            {cat}
+                        </button>
+                    ))}
                 </div>
-            </div>
 
-            {/* Grid de Produtos */}
-            <div className="p-4 pb-32">
-                {/* Aviso: Mesa Aberta Sem Itens */}
-                {currentOrder && cart.length === 0 && (
-                    <div className="mb-4 bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
-                        <AlertCircle size={20} className="text-blue-600 flex-shrink-0 mt-0.5" />
-                        <div className="flex-1">
-                            <h4 className="font-bold text-blue-900 mb-1">Mesa aberta sem itens</h4>
-                            <p className="text-sm text-blue-700">
-                                Esta mesa foi aberta mas ainda não tem nenhum item pedido.
-                                Adicione produtos abaixo e clique em "Enviar Cozinha" para registrar o pedido.
-                            </p>
-                        </div>
-                    </div>
-                )}
-
-                {filteredProducts.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-                        <Package size={64} className="mb-4 opacity-50" />
-                        <p className="font-medium">Nenhum produto encontrado</p>
-                    </div>
-                ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                <div className="flex-1 overflow-y-auto p-6 bg-gray-50 custom-scrollbar">
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 pb-20 md:pb-0">
                         {filteredProducts.map(product => (
                             <button
                                 key={product.id}
                                 onClick={() => addToCart(product)}
-                                className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-orange-200 transition-all text-left active:scale-95"
+                                className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl hover:-translate-y-1 hover:border-orange-200 transition-all text-left group flex flex-col h-full"
                             >
-                                <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider block mb-1">
-                                    {product.category}
-                                </span>
-                                <h3 className="font-bold text-gray-900 leading-tight mb-3 line-clamp-2 min-h-[40px]">
-                                    {product.name}
-                                </h3>
-                                <div className="flex justify-between items-center pt-3 border-t border-gray-100">
-                                    <span className="font-bold text-lg text-gray-900">{formatCurrency(product.currentPrice)}</span>
-                                    <div className="w-8 h-8 rounded-full bg-orange-50 text-orange-600 flex items-center justify-center">
+                                <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-2 block">{product.category}</span>
+                                <h3 className="font-bold text-gray-900 text-lg leading-tight mb-auto line-clamp-2">{product.name}</h3>
+                                <div className="flex justify-between items-end mt-4 pt-4 border-t border-gray-50 group-hover:border-dashed group-hover:border-gray-200">
+                                    <span className="font-black text-xl text-gray-900">{formatCurrency(product.currentPrice)}</span>
+                                    <div className="w-8 h-8 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center group-hover:bg-orange-600 group-hover:text-white transition-colors">
                                         <Plus size={18} />
                                     </div>
                                 </div>
                             </button>
                         ))}
                     </div>
-                )}
+                </div>
             </div>
 
-            {/* Carrinho Fixo Mobile - Mostra se tem itens OU se é mesa ocupada */}
-            {(cart.length > 0 || currentOrder) && (
-                <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-2xl z-40 safe-area-bottom">
-                    <div className="px-4 py-3">
-                        {/* Resumo Compacto */}
-                        <div className="flex items-center justify-between mb-3">
-                            <div>
-                                <div className="text-xs text-gray-400 font-bold uppercase">Total</div>
-                                <div className="text-2xl font-black text-gray-900">{formatCurrency(cartTotal)}</div>
-                            </div>
-                            <div className="text-right">
-                                <div className="text-xs text-gray-400 font-bold uppercase">{itemCount} Itens</div>
-                                {cart.length > 0 && (
-                                    <button
-                                        onClick={() => setIsDrawerOpen(!isDrawerOpen)}
-                                        className="text-sm text-orange-600 font-bold hover:underline"
-                                    >
-                                        {isDrawerOpen ? 'Ocultar Itens' : 'Ver Itens'}
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Ações */}
-                        <div className="grid grid-cols-2 gap-2">
-                            <button
-                                onClick={handleSendToKitchen}
-                                disabled={isSending || cart.length === 0}
-                                className="py-3 bg-orange-600 text-white font-bold rounded-xl hover:bg-orange-700 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
-                            >
-                                <ChefHat size={18} />
-                                <span>Enviar Cozinha</span>
-                            </button>
-                            <button
-                                onClick={() => navigate(`/orders?tableId=${tableId}${currentOrder?.id ? `&orderId=${currentOrder.id}` : ''}`)}
-                                className="py-3 bg-gray-900 text-white font-bold rounded-xl hover:bg-gray-800 transition flex items-center justify-center gap-2 shadow-lg"
-                            >
-                                <Receipt size={18} />
-                                <span>Fechar Conta</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Drawer de Carrinho (Slide-up) */}
-            <div
-                className={`fixed inset-x-0 bottom-0 bg-white rounded-t-3xl shadow-2xl transform transition-transform duration-300 z-50 max-h-[70vh] flex flex-col ${isDrawerOpen ? 'translate-y-0' : 'translate-y-full'
-                    }`}
-            >
-                <div className="p-4 border-b border-gray-200">
-                    <div className="flex items-center justify-between">
-                        <h3 className="text-lg font-bold text-gray-900">Itens do Pedido ({cart.length})</h3>
-                        <button
-                            onClick={() => setIsDrawerOpen(false)}
-                            className="p-2 hover:bg-gray-100 rounded-full"
-                        >
-                            <XCircle size={24} className="text-gray-400" />
-                        </button>
-                    </div>
+            <div className={`
+                fixed inset-y-0 right-0 w-96 bg-white border-l border-gray-200 shadow-2xl z-20 flex flex-col transform transition-transform duration-300 md:translate-x-0 md:static
+                ${isDrawerOpen ? 'translate-x-0' : 'translate-x-full'}
+            `}>
+                <div className="p-5 border-b border-gray-200 bg-gray-50/50 flex justify-between items-center">
+                    <h2 className="font-black text-gray-900 text-lg flex items-center gap-2">
+                        <Utensils size={20} className="text-orange-600" /> Confirmar Pedido
+                    </h2>
+                    <button onClick={() => setIsDrawerOpen(false)} className="md:hidden p-2 text-gray-400">
+                        <XCircle size={24} />
+                    </button>
+                    <button onClick={() => setShowCancelModal(true)} className="hidden md:block text-xs font-bold text-red-500 hover:text-red-700 uppercase tracking-wider">
+                        Cancelar Mesa
+                    </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                    {cart.map((item, index) => (
-                        <div key={item.id || `${item.productId}-${index}`} className="bg-gray-50 p-3 rounded-xl">
-                            <div className="flex items-start justify-between mb-2">
-                                <div className="flex-1">
-                                    <p className="font-bold text-gray-900">{item.productName}</p>
-                                    <p className="text-sm text-gray-500">{formatCurrency(item.unitPrice)} cada</p>
-                                </div>
-                                <button
-                                    onClick={() => removeFromCart(item.productId)}
-                                    className="text-gray-300 hover:text-red-500 p-1"
-                                >
-                                    <Trash2 size={18} />
+                <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                    {cart.map(item => (
+                        <div key={item.productId} className={`p-4 rounded-2xl border ${originalItems.find(oi => oi.productId === item.productId && oi.quantity >= item.quantity)
+                            ? 'bg-gray-50 border-gray-100'
+                            : 'bg-orange-50 border-orange-100'
+                            }`}>
+                            <div className="flex justify-between items-start mb-2">
+                                <h4 className="font-bold text-gray-900">{item.productName}</h4>
+                                <button onClick={() => removeFromCart(item.productId)} className="text-red-400 hover:text-red-600">
+                                    <Trash2 size={16} />
                                 </button>
                             </div>
-
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2 bg-white rounded-lg p-1">
-                                    <button
-                                        onClick={() => updateQuantity(item.productId, -1)}
-                                        className="w-8 h-8 flex items-center justify-center bg-gray-100 rounded-lg text-gray-600 hover:bg-red-100 hover:text-red-600 active:scale-95 transition"
-                                    >
-                                        <Minus size={16} />
+                            <div className="flex justify-between items-center">
+                                <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-lg p-1">
+                                    <button onClick={() => updateQuantity(item.productId, -1)} className="p-1 hover:bg-gray-100 rounded">
+                                        <Minus size={14} className="text-gray-600" />
                                     </button>
-                                    <span className="text-lg font-bold w-8 text-center">{item.quantity}</span>
-                                    <button
-                                        onClick={() => updateQuantity(item.productId, 1)}
-                                        className="w-8 h-8 flex items-center justify-center bg-gray-100 rounded-lg text-gray-600 hover:bg-green-100 hover:text-green-600 active:scale-95 transition"
-                                    >
-                                        <Plus size={16} />
+                                    <span className="font-bold text-sm min-w-[20px] text-center">{item.quantity}</span>
+                                    <button onClick={() => updateQuantity(item.productId, 1)} className="p-1 hover:bg-gray-100 rounded">
+                                        <Plus size={14} className="text-gray-600" />
                                     </button>
                                 </div>
-                                <span className="text-lg font-bold text-gray-900">{formatCurrency(item.total)}</span>
+                                <span className="font-bold text-gray-900">{formatCurrency(item.total)}</span>
                             </div>
                         </div>
                     ))}
                 </div>
+
+                <div className="p-5 border-t border-gray-200 bg-gray-50 space-y-4">
+                    <div className="flex justify-between items-center text-lg font-black text-gray-900">
+                        <span>Total</span>
+                        <span>{formatCurrency(cartTotal)}</span>
+                    </div>
+
+                    <button
+                        onClick={printBillConference}
+                        className="w-full py-3 bg-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-300 transition-all flex items-center justify-center gap-2"
+                        disabled={cart.length === 0}
+                    >
+                        <Receipt size={20} />
+                        Imprimir Conferência
+                    </button>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <button
+                            onClick={handleSendToKitchen}
+                            disabled={!waitingForKitchen || isSending}
+                            className={`py-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${waitingForKitchen
+                                ? 'bg-orange-600 text-white hover:bg-orange-700 shadow-xl shadow-orange-200'
+                                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                }`}
+                        >
+                            {isSending ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div> : <ChefHat size={20} />}
+                            Enviar Cozinha
+                        </button>
+
+                        <button
+                            onClick={() => setShowPaymentModal(true)}
+                            disabled={cart.length === 0}
+                            className="py-4 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 shadow-xl shadow-green-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <CreditCard size={20} />
+                            Pagamento
+                        </button>
+                    </div>
+                </div>
             </div>
 
-            {/* Modal: Enviado para Cozinha */}
+            {/* Modals */}
             {showKitchenModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-8 text-center animate-scale-in">
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+                    <div className="bg-white rounded-3xl p-8 max-w-sm w-full mx-4 text-center shadow-2xl animate-in zoom-in-95 duration-200">
                         <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
                             <CheckCircle2 size={40} />
                         </div>
                         <h2 className="text-2xl font-black text-gray-900 mb-2">Pedido Enviado!</h2>
-                        <p className="text-gray-500 mb-8">O pedido foi enviado para a cozinha.<br />A mesa continua aberta.</p>
-                        <div className="flex flex-col gap-3">
+                        <p className="text-gray-500 mb-8 font-medium">Os itens foram enviados para a cozinha.</p>
+                        <div className="grid grid-cols-1 gap-3">
                             <button
                                 onClick={printKitchenTicket}
-                                className="w-full py-3.5 bg-gray-100 text-gray-900 font-bold rounded-xl hover:bg-gray-200 transition flex items-center justify-center gap-2"
+                                className="w-full py-4 bg-gray-100 text-gray-900 rounded-xl font-bold hover:bg-gray-200 transition-colors flex items-center justify-center gap-2"
                             >
-                                <Printer size={18} /> Imprimir Comanda
+                                <Printer size={20} />
+                                Imprimir Via (Cozinha)
                             </button>
                             <button
-                                onClick={closeKitchenModal}
-                                className="w-full py-3.5 bg-gray-900 text-white font-bold rounded-xl hover:bg-gray-800 transition"
+                                onClick={() => setShowKitchenModal(false)}
+                                className="w-full py-4 bg-orange-600 text-white rounded-xl font-bold hover:bg-orange-700 transition-colors"
                             >
-                                Voltar para Mesas
+                                Continuar
                             </button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Modal: Cancelar Mesa */}
+            {showConferenceModal && (
+                <BillConferenceModal
+                    isOpen={showConferenceModal}
+                    onClose={() => setShowConferenceModal(false)}
+                    cart={cart}
+                    tableNumber={currentTable?.number}
+                />
+            )}
+
+            {showPaymentModal && (
+                <POSPaymentModal
+                    isOpen={showPaymentModal}
+                    onClose={() => setShowPaymentModal(false)}
+                    cartTotal={cartTotal}
+                    cart={cart}
+                    selectedCustomer={null}
+                    onConfirm={handleConfirmPayment}
+                />
+            )}
+
             {showCancelModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-                    <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-8 text-center">
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+                    <div className="bg-white rounded-3xl p-8 max-w-sm w-full mx-4 text-center relative overflow-hidden">
                         <div className="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6">
                             <AlertCircle size={40} />
                         </div>
                         <h2 className="text-2xl font-black text-gray-900 mb-2">Cancelar Mesa?</h2>
-                        <p className="text-gray-500 mb-8">Esta ação irá cancelar o pedido e liberar a mesa. Tem certeza?</p>
+                        <p className="text-gray-500 mb-8 font-medium">Todos os itens serão cancelados. Esta ação não pode ser desfeita.</p>
                         <div className="flex gap-3">
                             <button
                                 onClick={() => setShowCancelModal(false)}
-                                className="flex-1 py-3.5 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition"
+                                className="flex-1 py-4 bg-gray-100 text-gray-900 rounded-xl font-bold hover:bg-gray-200 transition-colors"
                             >
-                                Não
+                                Voltar
                             </button>
                             <button
                                 onClick={handleCancelTable}
-                                className="flex-1 py-3.5 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition"
+                                className="flex-1 py-4 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-colors"
                             >
-                                Sim, Cancelar
+                                Confirmar
                             </button>
                         </div>
                     </div>
