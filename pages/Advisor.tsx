@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { askAI } from '../utils/aiHelper'; 
-import { Send, Bot, User, Loader2, Sparkles } from 'lucide-react';
+import { askAI } from '../utils/aiHelper';
+import { Send, Bot, User, Loader2, Sparkles, Brain } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import PlanGuard from '../components/PlanGuard';
 
 interface Message {
   role: 'user' | 'ai';
@@ -12,7 +13,8 @@ interface Message {
 const Advisor: React.FC = () => {
   const { products, ingredients, fixedCosts, settings } = useApp();
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'ai', content: `Olá! Sou seu Consultor Financeiro de Restaurantes (IA). 
+    {
+      role: 'ai', content: `Olá! Sou seu Consultor Financeiro de Restaurantes (IA). 
     
 Posso analisar seu cardápio, custos e sugerir melhorias. Como posso ajudar hoje?` }
   ]);
@@ -53,7 +55,7 @@ Posso analisar seu cardápio, custos e sugerir melhorias. Como posso ajudar hoje
       `;
 
       const response = await askAI(context);
-      
+
       setMessages(prev => [...prev, { role: 'ai', content: response }]);
     } catch (error) {
       setMessages(prev => [...prev, { role: 'ai', content: "Desculpe, tive um problema ao processar sua solicitação. Tente novamente." }]);
@@ -63,21 +65,49 @@ Posso analisar seu cardápio, custos e sugerir melhorias. Como posso ajudar hoje
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-6rem)] bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-fade-in">
+    <PlanGuard feature="aiConsultant" showLock={true} fallback={
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-8 space-y-6 max-w-2xl mx-auto animate-fade-in">
+        <div className="w-24 h-24 bg-purple-100 rounded-full flex items-center justify-center animate-pulse">
+          <Brain size={48} className="text-purple-600" />
+        </div>
+        <h2 className="text-3xl font-black text-gray-900">Consultor IA Exclusivo</h2>
+        <p className="text-lg text-gray-500">
+          Tenha um cientista de dados e chef executivo trabalhando 24h por dia para o seu restaurante.
+          Nossa IA analisa seu cardápio, sugere combos, detecta prejuízos ocultos e cria campanhas de vendas.
+        </p>
+        <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-100 p-6 rounded-2xl text-left w-full shadow-sm">
+          <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+            <Sparkles size={18} className="text-purple-500" /> O que você perde sem a IA:
+          </h3>
+          <ul className="space-y-3 text-gray-600 text-sm">
+            <li className="flex gap-2">❌ <strong>Engenharia de Cardápio:</strong> Saber quais pratos lucram mais.</li>
+            <li className="flex gap-2">❌ <strong>Previsão de Vendas:</strong> Saber quanto comprar de estoque.</li>
+            <li className="flex gap-2">❌ <strong>Sugestões de Promoção:</strong> Ideias prontas para vender mais.</li>
+          </ul>
+        </div>
+        <div className="flex flex-col gap-2">
+          <button disabled className="bg-gray-900 text-white px-8 py-4 rounded-xl font-bold opacity-50 cursor-not-allowed shadow-xl">
+            Disponível no Plano PRO
+          </button>
+          <p className="text-xs text-gray-400">Faça upgrade em Configurações</p>
+        </div>
+      </div>
+    }>
+      <div className="flex flex-col h-[calc(100vh-6rem)] bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-fade-in">
         {/* Header */}
         <div className="bg-white p-4 border-b border-gray-100 flex items-center justify-between shadow-sm z-10">
-            <div className="flex items-center gap-3">
-                <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600">
-                    <Sparkles size={20} />
-                </div>
-                <div>
-                    <h2 className="font-bold text-gray-800">Consultor IA</h2>
-                    <p className="text-xs text-gray-500">Especialista em Food Cost</p>
-                </div>
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600">
+              <Sparkles size={20} />
             </div>
-            <div className="text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded border border-gray-100 font-medium">
-                Powered by Gemini 1.5
+            <div>
+              <h2 className="font-bold text-gray-800">Consultor IA</h2>
+              <p className="text-xs text-gray-500">Especialista em Food Cost</p>
             </div>
+          </div>
+          <div className="text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded border border-gray-100 font-medium">
+            Powered by Gemini 1.5
+          </div>
         </div>
 
         {/* Chat Area */}
@@ -88,46 +118,45 @@ Posso analisar seu cardápio, custos e sugerir melhorias. Como posso ajudar hoje
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm ${msg.role === 'user' ? 'bg-orange-100 text-orange-600' : 'bg-indigo-100 text-indigo-600'}`}>
                   {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
                 </div>
-                <div className={`p-4 rounded-2xl shadow-sm text-sm leading-relaxed ${
-                    msg.role === 'user' 
-                        ? 'bg-orange-600 text-white rounded-tr-none' 
-                        : 'bg-white text-gray-800 border border-gray-100 rounded-tl-none'
-                }`}>
-                    {msg.role === 'ai' ? (
-                        <div className="markdown-content">
-                            <ReactMarkdown 
-                                components={{
-                                    p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
-                                    ul: ({node, ...props}) => <ul className="list-disc pl-4 mb-2 space-y-1" {...props} />,
-                                    ol: ({node, ...props}) => <ol className="list-decimal pl-4 mb-2 space-y-1" {...props} />,
-                                    li: ({node, ...props}) => <li className="pl-1" {...props} />,
-                                    strong: ({node, ...props}) => <strong className="font-bold text-indigo-700" {...props} />,
-                                    h1: ({node, ...props}) => <h1 className="text-lg font-bold mb-2 mt-4" {...props} />,
-                                    h2: ({node, ...props}) => <h2 className="text-base font-bold mb-2 mt-3" {...props} />,
-                                    h3: ({node, ...props}) => <h3 className="text-sm font-bold mb-1 mt-2" {...props} />,
-                                }}
-                            >
-                                {msg.content}
-                            </ReactMarkdown>
-                        </div>
-                    ) : (
-                        msg.content
-                    )}
+                <div className={`p-4 rounded-2xl shadow-sm text-sm leading-relaxed ${msg.role === 'user'
+                  ? 'bg-orange-600 text-white rounded-tr-none'
+                  : 'bg-white text-gray-800 border border-gray-100 rounded-tl-none'
+                  }`}>
+                  {msg.role === 'ai' ? (
+                    <div className="markdown-content">
+                      <ReactMarkdown
+                        components={{
+                          p: ({ node, ...props }) => <p className="mb-2 last:mb-0" {...props} />,
+                          ul: ({ node, ...props }) => <ul className="list-disc pl-4 mb-2 space-y-1" {...props} />,
+                          ol: ({ node, ...props }) => <ol className="list-decimal pl-4 mb-2 space-y-1" {...props} />,
+                          li: ({ node, ...props }) => <li className="pl-1" {...props} />,
+                          strong: ({ node, ...props }) => <strong className="font-bold text-indigo-700" {...props} />,
+                          h1: ({ node, ...props }) => <h1 className="text-lg font-bold mb-2 mt-4" {...props} />,
+                          h2: ({ node, ...props }) => <h2 className="text-base font-bold mb-2 mt-3" {...props} />,
+                          h3: ({ node, ...props }) => <h3 className="text-sm font-bold mb-1 mt-2" {...props} />,
+                        }}
+                      >
+                        {msg.content}
+                      </ReactMarkdown>
+                    </div>
+                  ) : (
+                    msg.content
+                  )}
                 </div>
               </div>
             </div>
           ))}
           {loading && (
             <div className="flex justify-start animate-fade-in">
-                <div className="flex gap-3 max-w-[80%]">
-                    <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center flex-shrink-0">
-                        <Bot size={16} />
-                    </div>
-                    <div className="bg-white p-4 rounded-2xl rounded-tl-none border border-gray-100 shadow-sm flex items-center gap-2">
-                        <Loader2 size={16} className="animate-spin text-indigo-600" />
-                        <span className="text-sm text-gray-500">Analisando dados...</span>
-                    </div>
+              <div className="flex gap-3 max-w-[80%]">
+                <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center flex-shrink-0">
+                  <Bot size={16} />
                 </div>
+                <div className="bg-white p-4 rounded-2xl rounded-tl-none border border-gray-100 shadow-sm flex items-center gap-2">
+                  <Loader2 size={16} className="animate-spin text-indigo-600" />
+                  <span className="text-sm text-gray-500">Analisando dados...</span>
+                </div>
+              </div>
             </div>
           )}
           <div ref={messagesEndRef} />
@@ -145,10 +174,10 @@ Posso analisar seu cardápio, custos e sugerir melhorias. Como posso ajudar hoje
               className="flex-1 pl-4 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all shadow-inner"
               disabled={loading}
             />
-            <button 
-                onClick={handleSend} 
-                disabled={loading || !input.trim()}
-                className="absolute right-2 top-1.5 bottom-1.5 aspect-square bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-md flex items-center justify-center"
+            <button
+              onClick={handleSend}
+              disabled={loading || !input.trim()}
+              className="absolute right-2 top-1.5 bottom-1.5 aspect-square bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-md flex items-center justify-center"
             >
               <Send size={18} />
             </button>
@@ -157,7 +186,8 @@ Posso analisar seu cardápio, custos e sugerir melhorias. Como posso ajudar hoje
             A IA pode cometer erros. Verifique informações importantes.
           </p>
         </div>
-    </div>
+      </div>
+    </PlanGuard>
   );
 };
 

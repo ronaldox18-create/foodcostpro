@@ -32,7 +32,7 @@ const CustomerAuth: React.FC = () => {
                 .eq('user_id', storeId) // Scoped to store
                 .eq('email', formData.email)
                 .eq('password', formData.password) // Plain text for MVP as requested
-                .single();
+                .maybeSingle();
 
             if (error || !data) {
                 setError('Email ou senha inválidos.');
@@ -56,7 +56,7 @@ const CustomerAuth: React.FC = () => {
 
         try {
             // Check if exists
-            const { data: existing } = await supabase.from('customers').select('id').eq('user_id', storeId).eq('email', formData.email).single();
+            const { data: existing } = await supabase.from('customers').select('id').eq('user_id', storeId).eq('email', formData.email).maybeSingle();
             if (existing) {
                 setError('Este email já está cadastrado nesta loja.');
                 setLoading(false);

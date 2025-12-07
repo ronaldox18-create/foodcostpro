@@ -1,14 +1,20 @@
 import React, { useState } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { Product, RecipeItem, UnitType } from '../types';
-import { Plus, Trash2, Edit2, Calculator, Info, AlertTriangle, Copy, Sparkles, Loader, Wand2, X, TrendingUp, DollarSign, Percent, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, Edit2, Calculator, Info, AlertTriangle, Copy, Sparkles, Loader, Wand2, X, TrendingUp, DollarSign, Percent, ChevronRight, Lock } from 'lucide-react';
+import PlanGuard from '../components/PlanGuard';
+import { useAuth } from '../contexts/AuthContext';
 import { calculateProductMetrics, formatCurrency, formatPercent } from '../utils/calculations';
 import { askAI } from '../utils/aiHelper';
 
 const Products: React.FC = () => {
   const { products, ingredients, fixedCosts, settings, categories, addProduct, updateProduct, deleteProduct } = useApp();
+  const { checkAccess } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  const maxRecipes = checkAccess('maxRecipes');
+  const isLimitReached = typeof maxRecipes === 'number' && products.length >= maxRecipes;
 
   // AI Loading States
   const [isAiDescLoading, setIsAiDescLoading] = useState(false);
@@ -67,6 +73,10 @@ const Products: React.FC = () => {
   };
 
   const handleDuplicate = (prod: Product) => {
+    if (isLimitReached) {
+      alert(`Você atingiu o limite de ${maxRecipes} receitas do seu plano. Faça upgrade para continuar criando.`);
+      return;
+    }
     setFormData({
       ...prod,
       name: `${prod.name} (Cópia)`,
@@ -253,12 +263,24 @@ const Products: React.FC = () => {
           <h2 className="text-2xl font-bold text-gray-900">Cardápio & Custos</h2>
           <p className="text-gray-500">Análise detalhada de custos, markup e preço sugerido.</p>
         </div>
-        <button
-          onClick={() => { resetForm(); setIsModalOpen(true); }}
-          className="flex items-center gap-2 bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition shadow-sm"
-        >
-          <Plus size={18} /> Novo Produto
-        </button>
+        <div className="flex gap-2">
+          {isLimitReached ? (
+            <button
+              disabled
+              className="flex items-center gap-2 bg-gray-300 text-gray-500 px-4 py-2 rounded-lg cursor-not-allowed shadow-sm border border-gray-300"
+              title={`Limite do plano atingido (${maxRecipes} receitas). Faça upgrade para adicionar mais.`}
+            >
+              <Lock size={18} /> Limite Atingido
+            </button>
+          ) : (
+            <button
+              onClick={() => { resetForm(); setIsModalOpen(true); }}
+              className="flex items-center gap-2 bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition shadow-sm"
+            >
+              <Plus size={18} /> Novo Produto
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -558,15 +580,17 @@ const Products: React.FC = () => {
                   <div className="mt-4">
                     <div className="flex justify-between items-center mb-2">
                       <label className="block text-sm font-medium text-gray-700">Descrição para Vendas</label>
-                      <button
-                        type="button"
-                        onClick={handleGenerateDescription}
-                        disabled={!formData.name || isAiDescLoading}
-                        className="text-xs flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 transition font-medium shadow-sm"
-                      >
-                        {isAiDescLoading ? <Loader size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                        Gerar com IA
-                      </button>
+                      <PlanGuard feature="aiConsultant" showLock={true}>
+                        <button
+                          type="button"
+                          onClick={handleGenerateDescription}
+                          disabled={!formData.name || isAiDescLoading}
+                          className="text-xs flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 transition font-medium shadow-sm"
+                        >
+                          {isAiDescLoading ? <Loader size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                          Gerar com IA
+                        </button>
+                      </PlanGuard>
                     </div>
                     <textarea
                       rows={3}
@@ -601,14 +625,25 @@ const Products: React.FC = () => {
                       />
                     </div>
                     <div className="flex items-end">
-                      <button
-                        type="button"
-                        onClick={handleSuggestPrice}
-                        className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-bold rounded-xl hover:from-green-700 hover:to-emerald-700 shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2"
-                      >
-                        <Sparkles size={18} className="text-yellow-300" />
-                        Sugerir Preço
-                      </button>
+                      <PlanGuard feature="aiConsultant" showLock={true} fallback={
+                        <button
+                          type="button"
+                          disabled
+                          className="w-full sm:w-auto px-6 py-3 bg-gray-300 text-gray-500 font-bold rounded-xl cursor-not-allowed flex items-center justify-center gap-2 opacity-70"
+                        >
+                          <Sparkles size={18} />
+                          Sugerir Preço (Pro)
+                        </button>
+                      }>
+                        <button
+                          type="button"
+                          onClick={handleSuggestPrice}
+                          className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-bold rounded-xl hover:from-green-700 hover:to-emerald-700 shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2"
+                        >
+                          <Sparkles size={18} className="text-yellow-300" />
+                          Sugerir Preço
+                        </button>
+                      </PlanGuard>
                     </div>
                   </div>
                   <p className="text-xs text-green-700 mt-2 flex items-center gap-1">
@@ -712,15 +747,17 @@ const Products: React.FC = () => {
                       </div>
                       Modo de Preparo
                     </h4>
-                    <button
-                      type="button"
-                      onClick={handleOptimizePrepMethod}
-                      disabled={!formData.name || isAiPrepLoading}
-                      className="text-xs flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-lg hover:from-blue-600 hover:to-indigo-600 disabled:opacity-50 transition font-medium shadow-sm"
-                    >
-                      {isAiPrepLoading ? <Loader size={12} className="animate-spin" /> : <Wand2 size={12} />}
-                      Padronizar com IA
-                    </button>
+                    <PlanGuard feature="aiConsultant" showLock={true}>
+                      <button
+                        type="button"
+                        onClick={handleOptimizePrepMethod}
+                        disabled={!formData.name || isAiPrepLoading}
+                        className="text-xs flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-lg hover:from-blue-600 hover:to-indigo-600 disabled:opacity-50 transition font-medium shadow-sm"
+                      >
+                        {isAiPrepLoading ? <Loader size={12} className="animate-spin" /> : <Wand2 size={12} />}
+                        Padronizar com IA
+                      </button>
+                    </PlanGuard>
                   </div>
                   <textarea
                     rows={6}

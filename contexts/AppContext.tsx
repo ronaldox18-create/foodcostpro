@@ -25,7 +25,7 @@ interface AppContextType {
   addFixedCost: (cost: FixedCost) => Promise<void>;
   deleteFixedCost: (id: string) => Promise<void>;
 
-  addCustomer: (customer: Customer) => Promise<void>;
+  addCustomer: (customer: Omit<Customer, 'id' | 'totalSpent' | 'lastOrderDate'>) => Promise<void>;
   updateCustomer: (customer: Customer) => Promise<void>;
   deleteCustomer: (id: string) => Promise<void>;
 
@@ -498,7 +498,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     await supabase.from('fixed_costs').delete().eq('id', id);
   };
 
-  const addCustomer = async (customer: Customer) => {
+  const addCustomer = async (customer: Omit<Customer, 'id' | 'totalSpent' | 'lastOrderDate'>) => {
     if (!user) return;
     const { data } = await supabase.from('customers').insert([{ user_id: user.id, name: customer.name, phone: customer.phone, email: customer.email, address: customer.address, notes: customer.notes, birth_date: customer.birthDate }]).select().single();
     if (data) setCustomers(prev => [...prev, { ...customer, id: data.id, totalSpent: 0, lastOrderDate: '' }]);

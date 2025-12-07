@@ -2,9 +2,10 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { Customer, Order } from '../types';
-import { Plus, Search, MessageCircle, User, MapPin, Edit2, Trash2, Calendar, DollarSign, Gift, TrendingUp, Clock, ShoppingBag, Sparkles, Brain, Loader, Wand2, Copy, Check, Mail, FileText, Award } from 'lucide-react';
+import { Plus, Search, MessageCircle, User, MapPin, Edit2, Trash2, Calendar, DollarSign, Gift, TrendingUp, Clock, ShoppingBag, Sparkles, Brain, Loader, Wand2, Copy, Check, Mail, FileText, Award, Lock } from 'lucide-react';
 import { formatCurrency } from '../utils/calculations';
 import { askAI } from '../utils/aiHelper';
+import PlanGuard from '../components/PlanGuard';
 
 type FilterTab = 'all' | 'vip' | 'missing' | 'birthdays';
 
@@ -261,7 +262,7 @@ Prato favorito: ${stats.favoriteDish}
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedCustomer) {
-      updateCustomer(selectedCustomer.id, formData);
+      updateCustomer({ ...selectedCustomer, ...formData, id: selectedCustomer.id });
     } else {
       addCustomer(formData);
     }
@@ -546,14 +547,16 @@ Prato favorito: ${stats.favoriteDish}
                 {!aiProfile ? (
                   <div className="text-center py-4 relative z-10">
                     <p className="text-xs text-indigo-200 mb-3">Descubra quem é este cliente.</p>
-                    <button
-                      onClick={() => handleAnalyzeProfile(selectedCustomer)}
-                      disabled={isAnalyzingProfile}
-                      className="w-full bg-white/20 hover:bg-white/30 text-white text-xs font-bold py-2 rounded-lg transition flex items-center justify-center gap-2 disabled:opacity-50"
-                    >
-                      {isAnalyzingProfile ? <Loader size={12} className="animate-spin" /> : <Brain size={12} />}
-                      {isAnalyzingProfile ? 'Analisando...' : 'Analisar com IA'}
-                    </button>
+                    <PlanGuard feature="aiConsultant" showLock={true}>
+                      <button
+                        onClick={() => handleAnalyzeProfile(selectedCustomer)}
+                        disabled={isAnalyzingProfile}
+                        className="w-full bg-white/20 hover:bg-white/30 text-white text-xs font-bold py-2 rounded-lg transition flex items-center justify-center gap-2 disabled:opacity-50"
+                      >
+                        {isAnalyzingProfile ? <Loader size={12} className="animate-spin" /> : <Brain size={12} />}
+                        {isAnalyzingProfile ? 'Analisando...' : 'Analisar com IA'}
+                      </button>
+                    </PlanGuard>
                   </div>
                 ) : (
                   <div className="animate-in fade-in zoom-in duration-300 relative z-10">
@@ -577,11 +580,13 @@ Prato favorito: ${stats.favoriteDish}
                     <Wand2 size={12} /> Mensagem Inteligente
                   </p>
 
-                  <div className="grid grid-cols-3 gap-2 mb-3">
-                    <button onClick={() => handleGenerateMessage(selectedCustomer, 'promo')} className="text-[10px] bg-green-50 text-green-700 py-1.5 rounded border border-green-100 hover:bg-green-100 font-medium">Promoção</button>
-                    <button onClick={() => handleGenerateMessage(selectedCustomer, 'missing')} className="text-[10px] bg-red-50 text-red-700 py-1.5 rounded border border-red-100 hover:bg-red-100 font-medium">Sumido</button>
-                    <button onClick={() => handleGenerateMessage(selectedCustomer, 'casual')} className="text-[10px] bg-blue-50 text-blue-700 py-1.5 rounded border border-blue-100 hover:bg-blue-100 font-medium">Casual</button>
-                  </div>
+                  <PlanGuard feature="aiConsultant" showLock={true}>
+                    <div className="grid grid-cols-3 gap-2 mb-3">
+                      <button onClick={() => handleGenerateMessage(selectedCustomer, 'promo')} className="text-[10px] bg-green-50 text-green-700 py-1.5 rounded border border-green-100 hover:bg-green-100 font-medium">Promoção</button>
+                      <button onClick={() => handleGenerateMessage(selectedCustomer, 'missing')} className="text-[10px] bg-red-50 text-red-700 py-1.5 rounded border border-red-100 hover:bg-red-100 font-medium">Sumido</button>
+                      <button onClick={() => handleGenerateMessage(selectedCustomer, 'casual')} className="text-[10px] bg-blue-50 text-blue-700 py-1.5 rounded border border-blue-100 hover:bg-blue-100 font-medium">Casual</button>
+                    </div>
+                  </PlanGuard>
 
                   {isGeneratingMessage ? (
                     <div className="text-center py-4 text-gray-400 text-xs">

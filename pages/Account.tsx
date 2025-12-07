@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
 import { supabase } from '../utils/supabaseClient';
@@ -9,15 +10,25 @@ import {
   Calendar, DollarSign, FileText, LogOut, Eye, EyeOff, Upload, Phone, MapPin
 } from 'lucide-react';
 
+import { PLANS, PlanFeatures } from '../constants/plans';
+import { PlanType } from '../types';
+
 type TabType = 'profile' | 'security' | 'plan' | 'preferences' | 'data';
 
 const Account: React.FC = () => {
-  const { user, signOut } = useAuth();
+  const { user, signOut, userPlan, refreshUserPlan } = useAuth();
   const { settings, updateSettings, products, ingredients, customers, fixedCosts, orders } = useApp();
+  const [searchParams] = useSearchParams();
 
-  const [activeTab, setActiveTab] = useState<TabType>('profile');
+  const [activeTab, setActiveTab] = useState<TabType>(() => {
+    const tab = searchParams.get('tab');
+    return (tab as TabType) || 'profile';
+  });
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
+  // Plan State
+  const [isComparingPlans, setIsComparingPlans] = useState(false);
 
   // Profile states
   const [name, setName] = useState('');
@@ -59,6 +70,23 @@ const Account: React.FC = () => {
       setBusinessName(settings.businessName || '');
     }
   }, [user, settings]);
+
+  // Handle plan update
+  const handleUpdatePlan = async (newPlan: PlanType) => {
+    if (!user) return;
+    setLoading(true);
+    setMsg(null);
+    try {
+      await supabase.from('user_settings').update({ plan: newPlan }).eq('user_id', user.id);
+      await refreshUserPlan();
+      setMsg({ type: 'success', text: `Plano alterado para ${PLANS[newPlan].name} com sucesso!` });
+      setIsComparingPlans(false);
+    } catch (e: any) {
+      setMsg({ type: 'error', text: 'Erro ao alterar plano: ' + e.message });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Calculate statistics
   const stats = {
@@ -238,21 +266,7 @@ const Account: React.FC = () => {
     }
   };
 
-  const planDetails = {
-    name: 'Pro',
-    status: 'active',
-    nextBilling: new Date(new Date().setMonth(new Date().getMonth() + 1)).toLocaleDateString('pt-BR'),
-    price: 49.90,
-    features: [
-      'Produtos e ingredientes ilimitados',
-      'Gestão completa de clientes',
-      'Sistema PDV integrado',
-      'Controle de estoque avançado',
-      'Relatórios e análises',
-      'Sistema de fidelidade',
-      'Suporte prioritário'
-    ]
-  };
+  const currentPlan = PLANS[userPlan];
 
   const tabs = [
     { id: 'profile' as TabType, label: 'Perfil', icon: User },
@@ -307,7 +321,7 @@ const Account: React.FC = () => {
                 )}
                 <div className="mt-4 inline-flex items-center gap-2 bg-white/20 backdrop-blur-sm px-4 py-2 rounded-full">
                   <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                  <span className="text-sm font-semibold">Plano {planDetails.name} Ativo</span>
+                  <span className="text-sm font-semibold">Plano {currentPlan.name} Ativo</span>
                 </div>
               </div>
 
@@ -468,8 +482,8 @@ const Account: React.FC = () => {
                     placeholder="00.000.000/0000-00"
                     maxLength={18}
                     className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all ${cnpj && !isValidCNPJ(cnpj)
-                        ? 'border-red-300 bg-red-50'
-                        : 'border-gray-300'
+                      ? 'border-red-300 bg-red-50'
+                      : 'border-gray-300'
                       }`}
                   />
                   {cnpj && !isValidCNPJ(cnpj) && (
@@ -694,6 +708,8 @@ const Account: React.FC = () => {
             </div>
           )}
 
+
+
           {/* PLAN TAB */}
           {activeTab === 'plan' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-5">
@@ -702,391 +718,421 @@ const Account: React.FC = () => {
                 <p className="text-gray-600">Gerencie sua assinatura e forma de pagamento</p>
               </div>
 
-              {/* Current Plan Card */}
-              <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-8 text-white relative overflow-hidden">
-                <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 bg-white opacity-5 rounded-full blur-3xl"></div>
-                <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-60 h-60 bg-orange-500 opacity-10 rounded-full blur-3xl"></div>
+              {!isComparingPlans ? (
+                <>
+                  {/* Current Plan Card */}
+                  <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-8 text-white relative overflow-hidden">
+                    <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 bg-white opacity-5 rounded-full blur-3xl"></div>
+                    <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-60 h-60 bg-orange-500 opacity-10 rounded-full blur-3xl"></div>
 
-                <div className="relative z-10">
-                  <div className="flex items-start justify-between mb-6">
-                    <div>
-                      <div className="flex items-center gap-3 mb-2">
-                        <h3 className="text-3xl font-bold">Plano {planDetails.name}</h3>
-                        <span className="bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">
-                          Ativo
-                        </span>
-                      </div>
-                      <p className="text-white/70">Próxima cobrança: {planDetails.nextBilling}</p>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-4xl font-bold">R$ {planDetails.price.toFixed(2)}</div>
-                      <div className="text-white/70 text-sm">por mês</div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {planDetails.features.map((feature, idx) => (
-                      <div key={idx} className="flex items-center gap-2 text-white/90">
-                        <CheckCircle size={16} className="text-green-400 flex-shrink-0" />
-                        <span className="text-sm">{feature}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="mt-6 flex gap-3">
-                    <button className="flex-1 bg-white text-gray-900 py-3 rounded-xl font-semibold hover:bg-gray-100 transition-all">
-                      Gerenciar Assinatura
-                    </button>
-                    <button className="px-6 bg-white/10 backdrop-blur-sm text-white py-3 rounded-xl font-semibold hover:bg-white/20 transition-all border border-white/20">
-                      Ver Outros Planos
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Billing History */}
-              <div className="bg-gradient-to-br from-slate-50 to-gray-50 rounded-2xl p-6 border border-gray-200">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="p-3 bg-green-100 rounded-xl">
-                    <FileText className="w-6 h-6 text-green-600" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-gray-900">Histórico de Pagamentos</h3>
-                    <p className="text-sm text-gray-600">Visualize suas faturas anteriores</p>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  {[...Array(3)].map((_, idx) => {
-                    const date = new Date();
-                    date.setMonth(date.getMonth() - idx);
-                    return (
-                      <div key={idx} className="flex items-center justify-between p-4 bg-white rounded-lg border border-gray-200 hover:border-orange-300 transition-colors">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 bg-green-50 rounded-lg">
-                            <DollarSign className="w-5 h-5 text-green-600" />
+                    <div className="relative z-10">
+                      <div className="flex items-start justify-between mb-6">
+                        <div>
+                          <div className="flex items-center gap-3 mb-2">
+                            <h3 className="text-3xl font-bold">{currentPlan.name}</h3>
+                            <span className={`text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider ${userPlan === 'pro' ? 'bg-purple-500' : userPlan === 'starter' ? 'bg-orange-500' : 'bg-gray-500'}`}>
+                              Ativo
+                            </span>
                           </div>
-                          <div>
-                            <p className="font-medium text-gray-900">{date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</p>
-                            <p className="text-sm text-gray-500">Plano {planDetails.name}</p>
+                          <p className="text-white/70">
+                            {Number(currentPlan.price) > 0
+                              ? `R$ ${currentPlan.price.toFixed(2)} por mês`
+                              : 'Gratuito para sempre'}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <div className="p-3 bg-white/10 rounded-xl backdrop-blur-sm">
+                            <CreditCard size={32} />
                           </div>
                         </div>
-                        <div className="flex items-center gap-4">
-                          <span className="font-bold text-gray-900">R$ {planDetails.price.toFixed(2)}</span>
-                          <button className="text-orange-600 hover:text-orange-700 text-sm font-medium">
-                            Download
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="flex items-center gap-2 text-white/90">
+                          <CheckCircle size={16} className="text-green-400 flex-shrink-0" />
+                          <span className="text-sm">Receitas: {currentPlan.features.maxRecipes === 'unlimited' ? 'Ilimitadas' : currentPlan.features.maxRecipes}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-white/90">
+                          <CheckCircle size={16} className={currentPlan.features.financialReports ? "text-green-400" : "text-gray-500"} />
+                          <span className="text-sm">Relatórios Financeiros</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-white/90">
+                          <CheckCircle size={16} className={currentPlan.features.aiConsultant ? "text-green-400" : "text-gray-500"} />
+                          <span className="text-sm">Consultor IA</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-white/90">
+                          <CheckCircle size={16} className={currentPlan.features.loyaltySystem ? "text-green-400" : "text-gray-500"} />
+                          <span className="text-sm">Sistema Fidelidade</span>
+                        </div>
+                      </div>
+
+                      <div className="mt-6 flex flex-wrap gap-3">
+                        <button
+                          onClick={() => setIsComparingPlans(true)}
+                          className="px-6 bg-white text-gray-900 py-3 rounded-xl font-bold hover:bg-gray-100 transition-all border border-transparent shadow-lg"
+                        >
+                          Ver Outros Planos
+                        </button>
+                        <button
+                          onClick={() => alert("O portal de assinaturas ainda não está configurado.")}
+                          className="px-6 bg-white/10 text-white py-3 rounded-xl font-bold hover:bg-white/20 transition-all border border-white/20"
+                        >
+                          Gerenciar Assinatura
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Usage Statistics */}
+                  <div className="bg-gradient-to-br from-slate-50 to-gray-50 rounded-2xl p-6 border border-gray-200">
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="p-3 bg-blue-100 rounded-xl">
+                        <BarChart3 className="w-6 h-6 text-blue-600" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-gray-900">Uso do Sistema</h3>
+                        <p className="text-sm text-gray-600">Estatísticas do mês atual</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="bg-white p-4 rounded-xl border border-gray-200">
+                        <p className="text-xs text-gray-500 font-bold uppercase mb-1">Receitas</p>
+                        <p className="text-xl font-bold text-gray-900">{products.length} <span className="text-xs font-normal text-gray-400">/ {currentPlan.features.maxRecipes === 'unlimited' ? '∞' : currentPlan.features.maxRecipes}</span></p>
+                      </div>
+                      <div className="bg-white p-4 rounded-xl border border-gray-200">
+                        <p className="text-xs text-gray-500 font-bold uppercase mb-1">Clientes</p>
+                        <p className="text-xl font-bold text-gray-900">{customers.length}</p>
+                      </div>
+                      <div className="bg-white p-4 rounded-xl border border-gray-200">
+                        <p className="text-xs text-gray-500 font-bold uppercase mb-1">Pedidos (Mês)</p>
+                        <p className="text-xl font-bold text-gray-900">{orders.length}</p>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xl font-bold text-gray-900">Escolha o plano ideal para você</h3>
+                    <button
+                      onClick={() => setIsComparingPlans(false)}
+                      className="text-gray-500 hover:text-gray-900 text-sm font-medium underline"
+                    >
+                      Voltar para meu plano
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {(Object.entries(PLANS) as [PlanType, PlanFeatures][]).map(([key, plan]) => {
+                      const isCurrent = userPlan === key;
+                      return (
+                        <div key={key} className={`relative rounded-2xl border-2 p-6 flex flex-col ${isCurrent ? 'border-orange-500 bg-orange-50' : 'border-gray-200 bg-white'} hover:shadow-xl transition-all duration-300`}>
+                          {isCurrent && (
+                            <div className="absolute top-0 right-0 bg-orange-500 text-white text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-lg">
+                              ATUAL
+                            </div>
+                          )}
+                          <h3 className="text-xl font-bold text-gray-900 mb-2">{plan.name}</h3>
+                          <div className="mb-4">
+                            <span className="text-3xl font-black text-gray-900">
+                              {plan.price === 0 ? 'Grátis' : `R$ ${plan.price.toFixed(2)}`}
+                            </span>
+                            {plan.price > 0 && <span className="text-gray-500 text-sm">/mês</span>}
+                          </div>
+
+                          <div className="space-y-3 mb-8 flex-1">
+                            <div className="flex items-center gap-2 text-sm">
+                              <CheckCircle size={16} className="text-green-500 shrink-0" />
+                              <span className="text-gray-600">Receitas: <strong>{plan.features.maxRecipes === 'unlimited' ? 'Ilimitadas' : plan.features.maxRecipes}</strong></span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm">
+                              <CheckCircle size={16} className={plan.features.financialReports ? "text-green-500" : "text-gray-300"} />
+                              <span className={plan.features.financialReports ? "text-gray-600" : "text-gray-400"}>Relatórios Financeiros</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm">
+                              <CheckCircle size={16} className={plan.features.aiConsultant ? "text-green-500" : "text-gray-300"} />
+                              <span className={plan.features.aiConsultant ? "text-gray-600" : "text-gray-400"}>Consultor IA</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm">
+                              <CheckCircle size={16} className={plan.features.loyaltySystem ? "text-green-500" : "text-gray-300"} />
+                              <span className={plan.features.loyaltySystem ? "text-gray-600" : "text-gray-400"}>Sistema Fidelidade</span>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => !isCurrent && handleUpdatePlan(key)}
+                            disabled={isCurrent || loading}
+                            className={`w-full py-3 rounded-xl font-bold transition-all ${isCurrent
+                              ? 'bg-gray-200 text-gray-500 cursor-default'
+                              : 'bg-gray-900 text-white hover:bg-black shadow-lg hover:shadow-xl'
+                              }`}
+                          >
+                            {loading && !isCurrent ? <Loader2 className="animate-spin mx-auto" /> : isCurrent ? 'Plano Atual' : key === 'free' ? 'Downgrade' : 'Escolher Plano'}
                           </button>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Usage Statistics */}
-              <div className="bg-gradient-to-br from-slate-50 to-gray-50 rounded-2xl p-6 border border-gray-200">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="p-3 bg-blue-100 rounded-xl">
-                    <BarChart3 className="w-6 h-6 text-blue-600" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-gray-900">Uso do Sistema</h3>
-                    <p className="text-sm text-gray-600">Estatísticas do mês atual</p>
+                      );
+                    })}
                   </div>
                 </div>
-
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="bg-white p-4 rounded-xl border border-gray-200">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Package className="w-4 h-4 text-orange-600" />
-                      <span className="text-xs font-semibold text-gray-600">Produtos</span>
-                    </div>
-                    <div className="text-2xl font-bold text-gray-900">{stats.totalProducts}</div>
-                    <div className="text-xs text-gray-500 mt-1">cadastrados</div>
-                  </div>
-
-                  <div className="bg-white p-4 rounded-xl border border-gray-200">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Users className="w-4 h-4 text-blue-600" />
-                      <span className="text-xs font-semibold text-gray-600">Clientes</span>
-                    </div>
-                    <div className="text-2xl font-bold text-gray-900">{stats.totalCustomers}</div>
-                    <div className="text-xs text-gray-500 mt-1">cadastrados</div>
-                  </div>
-
-                  <div className="bg-white p-4 rounded-xl border border-gray-200">
-                    <div className="flex items-center gap-2 mb-2">
-                      <ShoppingBag className="w-4 h-4 text-green-600" />
-                      <span className="text-xs font-semibold text-gray-600">Pedidos</span>
-                    </div>
-                    <div className="text-2xl font-bold text-gray-900">{stats.totalOrders}</div>
-                    <div className="text-xs text-gray-500 mt-1">processados</div>
-                  </div>
-
-                  <div className="bg-white p-4 rounded-xl border border-gray-200">
-                    <div className="flex items-center gap-2 mb-2">
-                      <TrendingUp className="w-4 h-4 text-purple-600" />
-                      <span className="text-xs font-semibold text-gray-600">Receita</span>
-                    </div>
-                    <div className="text-2xl font-bold text-gray-900">
-                      {stats.totalRevenue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0 })}
-                    </div>
-                    <div className="text-xs text-gray-500 mt-1">no total</div>
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
           )}
+
 
           {/* PREFERENCES TAB */}
-          {activeTab === 'preferences' && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-5">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">Preferências do Sistema</h2>
-                <p className="text-gray-600">Personalize sua experiência no sistema</p>
-              </div>
+          {
+            activeTab === 'preferences' && (
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-5">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-2">Preferências do Sistema</h2>
+                  <p className="text-gray-600">Personalize sua experiência no sistema</p>
+                </div>
 
-              {/* Notifications */}
-              <div className="bg-gradient-to-br from-slate-50 to-gray-50 rounded-2xl p-6 border border-gray-200">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="p-3 bg-blue-100 rounded-xl">
-                    <Bell className="w-6 h-6 text-blue-600" />
+                {/* Notifications */}
+                <div className="bg-gradient-to-br from-slate-50 to-gray-50 rounded-2xl p-6 border border-gray-200">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="p-3 bg-blue-100 rounded-xl">
+                      <Bell className="w-6 h-6 text-blue-600" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-gray-900">Notificações</h3>
+                      <p className="text-sm text-gray-600">Configure como deseja ser notificado</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-bold text-gray-900">Notificações</h3>
-                    <p className="text-sm text-gray-600">Configure como deseja ser notificado</p>
+
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-4 bg-white rounded-lg border border-gray-200">
+                      <div>
+                        <p className="font-medium text-gray-900">Notificações por Email</p>
+                        <p className="text-sm text-gray-500">Receba atualizações importantes por email</p>
+                      </div>
+                      <button
+                        onClick={() => setEmailNotifications(!emailNotifications)}
+                        className={`relative w-14 h-7 rounded-full transition-colors ${emailNotifications ? 'bg-orange-600' : 'bg-gray-300'
+                          }`}
+                      >
+                        <div
+                          className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full transition-transform ${emailNotifications ? 'translate-x-7' : 'translate-x-0'
+                            }`}
+                        ></div>
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between p-4 bg-white rounded-lg border border-gray-200">
+                      <div>
+                        <p className="font-medium text-gray-900">Alertas de Pedidos</p>
+                        <p className="text-sm text-gray-500">Seja notificado quando receber novos pedidos</p>
+                      </div>
+                      <button
+                        onClick={() => setOrderAlerts(!orderAlerts)}
+                        className={`relative w-14 h-7 rounded-full transition-colors ${orderAlerts ? 'bg-orange-600' : 'bg-gray-300'
+                          }`}
+                      >
+                        <div
+                          className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full transition-transform ${orderAlerts ? 'translate-x-7' : 'translate-x-0'
+                            }`}
+                        ></div>
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between p-4 bg-white rounded-lg border border-gray-200">
+                      <div>
+                        <p className="font-medium text-gray-900">Alertas de Estoque Baixo</p>
+                        <p className="text-sm text-gray-500">Receba avisos quando o estoque estiver baixo</p>
+                      </div>
+                      <button
+                        onClick={() => setStockAlerts(!stockAlerts)}
+                        className={`relative w-14 h-7 rounded-full transition-colors ${stockAlerts ? 'bg-orange-600' : 'bg-gray-300'
+                          }`}
+                      >
+                        <div
+                          className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full transition-transform ${stockAlerts ? 'translate-x-7' : 'translate-x-0'
+                            }`}
+                        ></div>
+                      </button>
+                    </div>
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between p-4 bg-white rounded-lg border border-gray-200">
-                    <div>
-                      <p className="font-medium text-gray-900">Notificações por Email</p>
-                      <p className="text-sm text-gray-500">Receba atualizações importantes por email</p>
+                {/* Theme */}
+                <div className="bg-gradient-to-br from-slate-50 to-gray-50 rounded-2xl p-6 border border-gray-200">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="p-3 bg-purple-100 rounded-xl">
+                      {theme === 'light' ? (
+                        <Sun className="w-6 h-6 text-purple-600" />
+                      ) : (
+                        <Moon className="w-6 h-6 text-purple-600" />
+                      )}
                     </div>
+                    <div>
+                      <h3 className="font-bold text-gray-900">Aparência</h3>
+                      <p className="text-sm text-gray-600">Personalize o tema do sistema</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
                     <button
-                      onClick={() => setEmailNotifications(!emailNotifications)}
-                      className={`relative w-14 h-7 rounded-full transition-colors ${emailNotifications ? 'bg-orange-600' : 'bg-gray-300'
+                      onClick={() => setTheme('light')}
+                      className={`p-6 rounded-xl border-2 transition-all ${theme === 'light'
+                        ? 'border-orange-600 bg-orange-50'
+                        : 'border-gray-200 hover:border-gray-300'
                         }`}
                     >
-                      <div
-                        className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full transition-transform ${emailNotifications ? 'translate-x-7' : 'translate-x-0'
-                          }`}
-                      ></div>
+                      <Sun className="w-8 h-8 mx-auto mb-3 text-orange-600" />
+                      <p className="font-semibold text-gray-900">Claro</p>
+                      <p className="text-xs text-gray-500 mt-1">Tema padrão</p>
                     </button>
-                  </div>
 
-                  <div className="flex items-center justify-between p-4 bg-white rounded-lg border border-gray-200">
-                    <div>
-                      <p className="font-medium text-gray-900">Alertas de Pedidos</p>
-                      <p className="text-sm text-gray-500">Seja notificado quando receber novos pedidos</p>
-                    </div>
                     <button
-                      onClick={() => setOrderAlerts(!orderAlerts)}
-                      className={`relative w-14 h-7 rounded-full transition-colors ${orderAlerts ? 'bg-orange-600' : 'bg-gray-300'
+                      onClick={() => setTheme('dark')}
+                      className={`p-6 rounded-xl border-2 transition-all relative ${theme === 'dark'
+                        ? 'border-orange-600 bg-orange-50'
+                        : 'border-gray-200 hover:border-gray-300'
                         }`}
                     >
-                      <div
-                        className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full transition-transform ${orderAlerts ? 'translate-x-7' : 'translate-x-0'
-                          }`}
-                      ></div>
-                    </button>
-                  </div>
-
-                  <div className="flex items-center justify-between p-4 bg-white rounded-lg border border-gray-200">
-                    <div>
-                      <p className="font-medium text-gray-900">Alertas de Estoque Baixo</p>
-                      <p className="text-sm text-gray-500">Receba avisos quando o estoque estiver baixo</p>
-                    </div>
-                    <button
-                      onClick={() => setStockAlerts(!stockAlerts)}
-                      className={`relative w-14 h-7 rounded-full transition-colors ${stockAlerts ? 'bg-orange-600' : 'bg-gray-300'
-                        }`}
-                    >
-                      <div
-                        className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full transition-transform ${stockAlerts ? 'translate-x-7' : 'translate-x-0'
-                          }`}
-                      ></div>
+                      <div className="absolute top-2 right-2 text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full font-medium">
+                        Em breve
+                      </div>
+                      <Moon className="w-8 h-8 mx-auto mb-3 text-gray-400" />
+                      <p className="font-semibold text-gray-900">Escuro</p>
+                      <p className="text-xs text-gray-500 mt-1">Tema escuro</p>
                     </button>
                   </div>
                 </div>
               </div>
-
-              {/* Theme */}
-              <div className="bg-gradient-to-br from-slate-50 to-gray-50 rounded-2xl p-6 border border-gray-200">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="p-3 bg-purple-100 rounded-xl">
-                    {theme === 'light' ? (
-                      <Sun className="w-6 h-6 text-purple-600" />
-                    ) : (
-                      <Moon className="w-6 h-6 text-purple-600" />
-                    )}
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-gray-900">Aparência</h3>
-                    <p className="text-sm text-gray-600">Personalize o tema do sistema</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <button
-                    onClick={() => setTheme('light')}
-                    className={`p-6 rounded-xl border-2 transition-all ${theme === 'light'
-                      ? 'border-orange-600 bg-orange-50'
-                      : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                  >
-                    <Sun className="w-8 h-8 mx-auto mb-3 text-orange-600" />
-                    <p className="font-semibold text-gray-900">Claro</p>
-                    <p className="text-xs text-gray-500 mt-1">Tema padrão</p>
-                  </button>
-
-                  <button
-                    onClick={() => setTheme('dark')}
-                    className={`p-6 rounded-xl border-2 transition-all relative ${theme === 'dark'
-                      ? 'border-orange-600 bg-orange-50'
-                      : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                  >
-                    <div className="absolute top-2 right-2 text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full font-medium">
-                      Em breve
-                    </div>
-                    <Moon className="w-8 h-8 mx-auto mb-3 text-gray-400" />
-                    <p className="font-semibold text-gray-900">Escuro</p>
-                    <p className="text-xs text-gray-500 mt-1">Tema escuro</p>
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+            )
+          }
 
           {/* DATA TAB */}
-          {activeTab === 'data' && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-5">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">Gerenciamento de Dados</h2>
-                <p className="text-gray-600">Faça backup ou gerencie seus dados do sistema</p>
-              </div>
+          {
+            activeTab === 'data' && (
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-5">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-2">Gerenciamento de Dados</h2>
+                  <p className="text-gray-600">Faça backup ou gerencie seus dados do sistema</p>
+                </div>
 
-              {/* Export Data */}
-              <div
-                onClick={handleExportData}
-                className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-6 border-2 border-blue-200 hover:border-blue-400 cursor-pointer transition-all hover:shadow-lg group"
-              >
-                <div className="flex items-start gap-4">
-                  <div className="p-4 bg-blue-600 rounded-xl group-hover:scale-110 transition-transform">
-                    <Download className="w-8 h-8 text-white" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">Fazer Backup Completo</h3>
-                    <p className="text-gray-700 mb-4">
-                      Baixe um arquivo JSON com todos os seus dados: produtos, ingredientes, clientes,
-                      pedidos e configurações. Mantenha seus dados seguros!
-                    </p>
-                    <div className="flex items-center gap-6 text-sm text-gray-600">
-                      <div className="flex items-center gap-2">
-                        <Package className="w-4 h-4" />
-                        <span>{stats.totalProducts} Produtos</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Users className="w-4 h-4" />
-                        <span>{stats.totalCustomers} Clientes</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <FileText className="w-4 h-4" />
-                        <span>{stats.totalOrders} Pedidos</span>
+                {/* Export Data */}
+                <div
+                  onClick={handleExportData}
+                  className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-6 border-2 border-blue-200 hover:border-blue-400 cursor-pointer transition-all hover:shadow-lg group"
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="p-4 bg-blue-600 rounded-xl group-hover:scale-110 transition-transform">
+                      <Download className="w-8 h-8 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-xl font-bold text-gray-900 mb-2">Fazer Backup Completo</h3>
+                      <p className="text-gray-700 mb-4">
+                        Baixe um arquivo JSON com todos os seus dados: produtos, ingredientes, clientes,
+                        pedidos e configurações. Mantenha seus dados seguros!
+                      </p>
+                      <div className="flex items-center gap-6 text-sm text-gray-600">
+                        <div className="flex items-center gap-2">
+                          <Package className="w-4 h-4" />
+                          <span>{stats.totalProducts} Produtos</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Users className="w-4 h-4" />
+                          <span>{stats.totalCustomers} Clientes</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <FileText className="w-4 h-4" />
+                          <span>{stats.totalOrders} Pedidos</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl font-semibold group-hover:bg-blue-700 transition-colors">
-                    <Download size={18} />
-                    Baixar
-                  </div>
-                </div>
-              </div>
-
-              {/* Import Data */}
-              <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-6 border-2 border-green-200">
-                <div className="flex items-start gap-4">
-                  <div className="p-4 bg-green-600 rounded-xl">
-                    <Upload className="w-8 h-8 text-white" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">Importar Dados</h3>
-                    <p className="text-gray-700 mb-4">
-                      Restaure um backup anterior ou importe dados de outro sistema.
-                    </p>
-                    <button className="flex items-center gap-2 px-6 py-2.5 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition-colors">
-                      <Upload size={18} />
-                      Selecionar Arquivo
-                    </button>
+                    <div className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl font-semibold group-hover:bg-blue-700 transition-colors">
+                      <Download size={18} />
+                      Baixar
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Danger Zone */}
-              <div className="bg-gradient-to-br from-red-50 to-pink-50 rounded-2xl p-6 border-2 border-red-200">
-                <div className="flex items-start gap-4">
-                  <div className="p-4 bg-red-600 rounded-xl">
-                    <AlertTriangle className="w-8 h-8 text-white" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-xl font-bold text-red-900 mb-2">Zona de Perigo</h3>
-                    <p className="text-red-700 mb-4">
-                      Ações irreversíveis que afetam seus dados permanentemente.
-                    </p>
-                    <div className="space-y-3">
-                      <button className="w-full flex items-center justify-between p-4 bg-white rounded-lg border border-red-200 hover:border-red-400 hover:bg-red-50 transition-all text-left">
-                        <div>
-                          <p className="font-semibold text-gray-900">Resetar Todos os Dados</p>
-                          <p className="text-sm text-gray-600">Apaga todos os seus dados do sistema</p>
-                        </div>
-                        <Trash2 className="w-5 h-5 text-red-600" />
-                      </button>
-
-                      <button className="w-full flex items-center justify-between p-4 bg-white rounded-lg border border-red-200 hover:border-red-400 hover:bg-red-50 transition-all text-left">
-                        <div>
-                          <p className="font-semibold text-gray-900">Excluir Conta Permanentemente</p>
-                          <p className="text-sm text-gray-600">Remove sua conta e todos os dados associados</p>
-                        </div>
-                        <Trash2 className="w-5 h-5 text-red-600" />
+                {/* Import Data */}
+                <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-6 border-2 border-green-200">
+                  <div className="flex items-start gap-4">
+                    <div className="p-4 bg-green-600 rounded-xl">
+                      <Upload className="w-8 h-8 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-xl font-bold text-gray-900 mb-2">Importar Dados</h3>
+                      <p className="text-gray-700 mb-4">
+                        Restaure um backup anterior ou importe dados de outro sistema.
+                      </p>
+                      <button className="flex items-center gap-2 px-6 py-2.5 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition-colors">
+                        <Upload size={18} />
+                        Selecionar Arquivo
                       </button>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Data Privacy */}
-              <div className="bg-gradient-to-br from-slate-50 to-gray-50 rounded-2xl p-6 border border-gray-200">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="p-3 bg-gray-700 rounded-xl">
-                    <Shield className="w-6 h-6 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-gray-900">Privacidade dos Dados</h3>
-                    <p className="text-sm text-gray-600">Seus dados são criptografados e seguros</p>
+                {/* Danger Zone */}
+                <div className="bg-gradient-to-br from-red-50 to-pink-50 rounded-2xl p-6 border-2 border-red-200">
+                  <div className="flex items-start gap-4">
+                    <div className="p-4 bg-red-600 rounded-xl">
+                      <AlertTriangle className="w-8 h-8 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-xl font-bold text-red-900 mb-2">Zona de Perigo</h3>
+                      <p className="text-red-700 mb-4">
+                        Ações irreversíveis que afetam seus dados permanentemente.
+                      </p>
+                      <div className="space-y-3">
+                        <button className="w-full flex items-center justify-between p-4 bg-white rounded-lg border border-red-200 hover:border-red-400 hover:bg-red-50 transition-all text-left">
+                          <div>
+                            <p className="font-semibold text-gray-900">Resetar Todos os Dados</p>
+                            <p className="text-sm text-gray-600">Apaga todos os seus dados do sistema</p>
+                          </div>
+                          <Trash2 className="w-5 h-5 text-red-600" />
+                        </button>
+
+                        <button className="w-full flex items-center justify-between p-4 bg-white rounded-lg border border-red-200 hover:border-red-400 hover:bg-red-50 transition-all text-left">
+                          <div>
+                            <p className="font-semibold text-gray-900">Excluir Conta Permanentemente</p>
+                            <p className="text-sm text-gray-600">Remove sua conta e todos os dados associados</p>
+                          </div>
+                          <Trash2 className="w-5 h-5 text-red-600" />
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div className="p-4 bg-white rounded-lg border border-gray-200 text-center">
-                    <CheckCircle className="w-6 h-6 text-green-600 mx-auto mb-2" />
-                    <p className="font-semibold text-gray-900 text-sm">Criptografia SSL</p>
+
+                {/* Data Privacy */}
+                <div className="bg-gradient-to-br from-slate-50 to-gray-50 rounded-2xl p-6 border border-gray-200">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="p-3 bg-gray-700 rounded-xl">
+                      <Shield className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-gray-900">Privacidade dos Dados</h3>
+                      <p className="text-sm text-gray-600">Seus dados são criptografados e seguros</p>
+                    </div>
                   </div>
-                  <div className="p-4 bg-white rounded-lg border border-gray-200 text-center">
-                    <CheckCircle className="w-6 h-6 text-green-600 mx-auto mb-2" />
-                    <p className="font-semibold text-gray-900 text-sm">Backup Automático</p>
-                  </div>
-                  <div className="p-4 bg-white rounded-lg border border-gray-200 text-center">
-                    <CheckCircle className="w-6 h-6 text-green-600 mx-auto mb-2" />
-                    <p className="font-semibold text-gray-900 text-sm">LGPD Compliant</p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="p-4 bg-white rounded-lg border border-gray-200 text-center">
+                      <CheckCircle className="w-6 h-6 text-green-600 mx-auto mb-2" />
+                      <p className="font-semibold text-gray-900 text-sm">Criptografia SSL</p>
+                    </div>
+                    <div className="p-4 bg-white rounded-lg border border-gray-200 text-center">
+                      <CheckCircle className="w-6 h-6 text-green-600 mx-auto mb-2" />
+                      <p className="font-semibold text-gray-900 text-sm">Backup Automático</p>
+                    </div>
+                    <div className="p-4 bg-white rounded-lg border border-gray-200 text-center">
+                      <CheckCircle className="w-6 h-6 text-green-600 mx-auto mb-2" />
+                      <p className="font-semibold text-gray-900 text-sm">LGPD Compliant</p>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+            )
+          }
+        </div >
+      </div >
+    </div >
   );
 };
 

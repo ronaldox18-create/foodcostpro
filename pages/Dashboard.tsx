@@ -34,7 +34,8 @@ import {
     Brain,
     Sparkles,
     Bell,
-    BellRing
+    BellRing,
+    Lock
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatCurrency } from '../utils/calculations';
@@ -42,6 +43,8 @@ import { exportOrdersToCSV, generatePDFReport } from '../utils/export';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import BusinessHoursWidget from '../components/BusinessHoursWidget';
 import { generateForecast } from '../utils/forecast';
+import { FoodCostAIAdvisor } from '../components/FoodCostAIAdvisor';
+import PlanGuard from '../components/PlanGuard';
 
 const Dashboard: React.FC = () => {
     const { orders, ingredients, products, customers, settings, fixedCosts } = useApp();
@@ -400,98 +403,7 @@ const Dashboard: React.FC = () => {
         };
     }, [orders]);
 
-    // IA: Análise de Engenharia de Cardápio (Menu Engineering)
-    const menuInsights = useMemo(() => {
-        if (periodStats.orders.length === 0) return [];
 
-        // 1. Calcular dados por produto (Vendas e Custos)
-        const productData = new Map();
-
-        // Precisamos iterar sobre periodStats.orders para pegar o volume do período
-        periodStats.orders.forEach(o => {
-            o.items.forEach(item => {
-                if (!productData.has(item.productId)) {
-                    productData.set(item.productId, {
-                        name: item.productName,
-                        qty: 0,
-                        revenue: 0,
-                        cost: 0
-                    });
-                }
-                const p = productData.get(item.productId);
-                p.qty += item.quantity;
-                p.revenue += item.total;
-
-                // Calcular custo estimado dessa venda
-                const productDef = products.find(prod => prod.id === item.productId);
-                if (productDef) {
-                    const unitCost = productDef.recipe.reduce((acc, comp) => {
-                        const ing = ingredients.find(i => i.id === comp.ingredientId);
-                        if (!ing) return acc;
-                        let q = comp.quantityUsed;
-                        if (ing.purchaseUnit === 'kg' && comp.unitUsed === 'g') q /= 1000;
-                        if (ing.purchaseUnit === 'l' && comp.unitUsed === 'ml') q /= 1000;
-                        return acc + (ing.purchasePrice / ing.purchaseQuantity) * q;
-                    }, 0);
-                    p.cost += unitCost * item.quantity;
-                }
-            });
-        });
-
-        const items = Array.from(productData.values());
-        if (items.length < 2) return []; // Precisa de pelo menos 2 itens para comparar
-
-        // 2. Calcular médias (Thresholds da Matriz)
-        const avgQty = items.reduce((sum, i) => sum + i.qty, 0) / items.length;
-        // Margem de Contribuição Unitária Média ponderada? Não, média simples dos itens para classificar o mix.
-        // Ou média ponderada pelo volume? Normalmente usa-se a média aritmética simples dos itens no cardápio para classificar High/Low.
-        // Vamos usar Margem de Contribuição Total do item vs Média.
-        const avgContribution = items.reduce((sum, i) => sum + (i.revenue - i.cost), 0) / items.length;
-
-        // 3. Gerar Insights de IA
-        const insights = [];
-
-        // STARS (Estrelas): Alta Venda, Alta Margem Total
-        const stars = items.filter(i => i.qty >= avgQty && (i.revenue - i.cost) >= avgContribution);
-        if (stars.length > 0) {
-            const topStar = stars.sort((a, b) => (b.revenue - b.cost) - (a.revenue - a.cost))[0];
-            insights.push({
-                type: 'success',
-                icon: 'Star', // Usar component mapping depois ou string
-                title: 'Estrela do Cardápio',
-                description: `O "${topStar.name}" é seu campeão! Vende muito e lucra muito. Garanta que nunca falte estoque e mantenha a qualidade.`
-            });
-        }
-
-        // PLOWHORSES (Burros de Carga): Alta Venda, Baixa Margem Total
-        const plowhorses = items.filter(i => i.qty >= avgQty && (i.revenue - i.cost) < avgContribution);
-        if (plowhorses.length > 0) {
-            const topPlow = plowhorses.sort((a, b) => b.qty - a.qty)[0];
-            insights.push({
-                type: 'warning',
-                icon: 'TrendingUp',
-                title: 'Potencial de Lucro',
-                description: `"${topPlow.name}" tem alta saída mas deixa pouco lucro. Sugestão: Aumente levemente o preço ou reduza custos da receita.`
-            });
-        }
-
-        // PUZZLES (Quebra-Cabeças): Baixa Venda, Alta Margem Total
-        const puzzles = items.filter(i => i.qty < avgQty && (i.revenue - i.cost) >= avgContribution);
-        if (puzzles.length > 0) {
-            const topPuzzle = puzzles.sort((a, b) => (b.revenue - b.cost) - (a.revenue - a.cost))[0];
-            insights.push({
-                type: 'info',
-                icon: 'Megaphone',
-                title: 'Precisa de Marketing',
-                description: `"${topPuzzle.name}" é muito rentável mas vende pouco. Crie uma promoção, tire fotos melhores ou destaque-o no cardápio!`
-            });
-        }
-
-        // DOGS (Cães): Baixa Venda, Baixa Margem
-        // ... (Opcional, para não ser negativo demais)
-
-        return insights;
-    }, [periodStats.orders, products, ingredients]);
 
     // Análise de horários de pico
     const healthIndicators = useMemo(() => {
@@ -682,32 +594,39 @@ const Dashboard: React.FC = () => {
 
                 <div className="flex flex-col sm:flex-row items-center gap-3">
                     {/* Botões de Exportação */}
-                    <div className="flex gap-2">
-                        <button
-                            onClick={handleExportPDF}
-                            className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 hover:text-orange-600 hover:border-orange-200 transition-all text-sm font-medium shadow-sm"
-                            title="Exportar Relatório em PDF"
-                        >
-                            <FileText size={16} />
-                            <span className="hidden sm:inline">PDF</span>
-                        </button>
-                        <button
-                            onClick={handleExportCSV}
-                            className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 hover:text-green-600 hover:border-green-200 transition-all text-sm font-medium shadow-sm"
-                            title="Exportar Dados em Excel/CSV"
-                        >
-                            <FileSpreadsheet size={16} />
-                            <span className="hidden sm:inline">Excel</span>
-                        </button>
-                        <button
-                            onClick={requestNotificationPermission}
-                            className={`flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-all text-sm font-medium shadow-sm ${notificationPermission === 'granted' ? 'text-violet-600 border-violet-200' : 'hover:text-violet-600 hover:border-violet-200'}`}
-                            title={notificationPermission === 'granted' ? 'Notificações Ativas' : 'Ativar Notificações'}
-                        >
-                            {notificationPermission === 'granted' ? <BellRing size={16} /> : <Bell size={16} />}
-                            <span className="hidden sm:inline">{notificationPermission === 'granted' ? 'Alertas On' : 'Ativar Alertas'}</span>
-                        </button>
-                    </div>
+                    <PlanGuard feature="financialReports" showLock={false} fallback={
+                        <div className="flex gap-2 opacity-50 cursor-not-allowed items-center" title="Relatórios disponíveis no Plano Pro">
+                            <FileText size={16} className="text-gray-400" />
+                            <FileSpreadsheet size={16} className="text-gray-400" />
+                        </div>
+                    }>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={handleExportPDF}
+                                className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 hover:text-orange-600 hover:border-orange-200 transition-all text-sm font-medium shadow-sm"
+                                title="Exportar Relatório em PDF"
+                            >
+                                <FileText size={16} />
+                                <span className="hidden sm:inline">PDF</span>
+                            </button>
+                            <button
+                                onClick={handleExportCSV}
+                                className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 hover:text-green-600 hover:border-green-200 transition-all text-sm font-medium shadow-sm"
+                                title="Exportar Dados em Excel/CSV"
+                            >
+                                <FileSpreadsheet size={16} />
+                                <span className="hidden sm:inline">Excel</span>
+                            </button>
+                            <button
+                                onClick={requestNotificationPermission}
+                                className={`flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-all text-sm font-medium shadow-sm ${notificationPermission === 'granted' ? 'text-violet-600 border-violet-200' : 'hover:text-violet-600 hover:border-violet-200'}`}
+                                title={notificationPermission === 'granted' ? 'Notificações Ativas' : 'Ativar Notificações'}
+                            >
+                                {notificationPermission === 'granted' ? <BellRing size={16} /> : <Bell size={16} />}
+                                <span className="hidden sm:inline">{notificationPermission === 'granted' ? 'Alertas On' : 'Ativar Alertas'}</span>
+                            </button>
+                        </div>
+                    </PlanGuard>
 
                     {/* Filtros de Período */}
                     <div className="flex flex-col items-end gap-2">
@@ -903,32 +822,61 @@ const Dashboard: React.FC = () => {
                 </Card>
 
                 {/* Margem de Lucro */}
-                <Card className="border-l-4 border-l-orange-500">
-                    <CardContent className="pt-6">
-                        <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                                <div className="flex items-center gap-2 text-gray-500 text-sm font-medium mb-2">
-                                    <Percent size={16} />
-                                    Margem de Lucro
+                <PlanGuard feature="financialReports" showLock={true} fallback={
+                    <Card className="border-l-4 border-l-gray-300 opacity-75">
+                        <CardContent className="pt-6 relative overflow-hidden">
+                            <div className="absolute inset-0 flex items-center justify-center bg-gray-100/50 backdrop-blur-[1px] z-10">
+                                <span className="text-xs font-bold text-gray-500 bg-white px-3 py-1 rounded-full shadow-sm flex items-center gap-1">
+                                    <Lock size={12} /> Pro
+                                </span>
+                            </div>
+                            <div className="flex items-start justify-between filter blur-[2px] select-none">
+                                <div className="flex-1">
+                                    <div className="flex items-center gap-2 text-gray-500 text-sm font-medium mb-2">
+                                        <Percent size={16} />
+                                        Margem de Lucro
+                                    </div>
+                                    <h2 className="text-3xl font-bold text-gray-900 mb-2">
+                                        ??%
+                                    </h2>
+                                    <div className="text-xs font-semibold text-gray-400">
+                                        Análise detalhada
+                                    </div>
                                 </div>
-                                <h2 className="text-3xl font-bold text-gray-900 mb-2">
-                                    {periodStats.profitMargin.toFixed(1)}%
-                                </h2>
-                                <div className={`text-xs font-semibold ${periodStats.profitMargin >= 70 ? 'text-green-600' :
-                                    periodStats.profitMargin >= 50 ? 'text-yellow-600' :
-                                        'text-red-600'
-                                    }`}>
-                                    {periodStats.profitMargin >= 70 ? '✓ Excelente' :
-                                        periodStats.profitMargin >= 50 ? '⚠ Aceitável' :
-                                            '⚠ Atenção necessária'}
+                                <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                                    <Percent size={24} className="text-gray-400" />
                                 </div>
                             </div>
-                            <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                                <Percent size={24} className="text-orange-600" />
+                        </CardContent>
+                    </Card>
+                }>
+                    <Card className="border-l-4 border-l-orange-500">
+                        <CardContent className="pt-6">
+                            <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                    <div className="flex items-center gap-2 text-gray-500 text-sm font-medium mb-2">
+                                        <Percent size={16} />
+                                        Margem de Lucro
+                                    </div>
+                                    <h2 className="text-3xl font-bold text-gray-900 mb-2">
+                                        {periodStats.profitMargin.toFixed(1)}%
+                                    </h2>
+                                    <div className={`text-xs font-semibold ${periodStats.profitMargin >= 70 ? 'text-green-600' :
+                                        periodStats.profitMargin >= 50 ? 'text-yellow-600' :
+                                            'text-red-600'
+                                        }`}>
+                                        {periodStats.profitMargin >= 70 ? '✓ Excelente' :
+                                            periodStats.profitMargin >= 50 ? '⚠ Aceitável' :
+                                                '⚠ Atenção necessária'}
+                                    </div>
+                                </div>
+                                <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                                    <Percent size={24} className="text-orange-600" />
+                                </div>
                             </div>
-                        </div>
-                    </CardContent>
-                </Card>
+                        </CardContent>
+                    </Card>
+                </PlanGuard>
             </div>
 
             {/* ========================================================================
@@ -940,123 +888,27 @@ const Dashboard: React.FC = () => {
                 {/* Coluna Esquerda (2/3) */}
                 <div className="lg:col-span-2 space-y-6">
 
-                    {/* Central de Inteligência IA */}
-                    <Card className="bg-gradient-to-r from-violet-50 via-fuchsia-50 to-indigo-50 border-violet-100 overflow-hidden relative shadow-md">
-                        {/* Background Effects */}
-                        <div className="absolute top-0 right-0 w-96 h-96 bg-violet-200/30 rounded-full -mr-20 -mt-20 blur-3xl pointer-events-none"></div>
-                        <div className="absolute bottom-0 left-0 w-64 h-64 bg-indigo-200/30 rounded-full -ml-20 -mb-20 blur-3xl pointer-events-none"></div>
-
-                        <CardHeader className="pb-2">
-                            <CardTitle className="flex items-center gap-2 text-violet-900 relative z-10 text-xl">
-                                <div className="p-2 bg-white rounded-lg shadow-sm">
-                                    <Brain size={24} className="text-violet-600" />
-                                </div>
-                                <div>
-                                    <h3 className="font-bold">FoodCost AI Advisor</h3>
-                                    <p className="text-xs font-normal text-violet-700 opacity-80">Inteligência Estratégica para seu Negócio</p>
-                                </div>
-                                <span className="ml-auto text-[10px] font-bold px-3 py-1 bg-violet-600 text-white rounded-full tracking-wide uppercase shadow-sm animate-pulse">
-                                    LIVE
-                                </span>
-                            </CardTitle>
-                        </CardHeader>
-
-                        <CardContent className="relative z-10 pt-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-
-                                {/* Coluna 1: Previsão de Vendas (Visual) */}
-                                <div className="space-y-4">
-                                    <div className="flex items-center justify-between">
-                                        <h4 className="text-sm font-bold text-gray-800 flex items-center gap-2">
-                                            <TrendingUp size={16} className="text-violet-600" />
-                                            Previsão de Faturamento
-                                        </h4>
-                                        <span className={`text-xs font-bold px-2 py-1 rounded-md ${salesForecast.trend === 'up' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>
-                                            Tendência: {salesForecast.trend === 'up' ? 'Alta 📈' : salesForecast.trend === 'down' ? 'Queda 📉' : 'Estável'}
-                                        </span>
+                    {/* Central de Inteligência IA (New Professional Component) */}
+                    <div className="mb-6">
+                        <PlanGuard feature="aiConsultant" showLock={true} fallback={
+                            <Card className="bg-gradient-to-br from-gray-50 to-gray-100 border-gray-200 overflow-hidden relative shadow-sm opacity-80">
+                                <CardContent className="p-8 flex flex-col items-center justify-center text-center space-y-4">
+                                    <div className="w-16 h-16 bg-violet-100 rounded-full flex items-center justify-center mb-2">
+                                        <Brain size={32} className="text-violet-500" />
                                     </div>
-
-                                    <div className="h-[200px] w-full bg-white/50 rounded-xl border border-violet-100 p-2 shadow-sm">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <ComposedChart data={salesForecast.data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                                                <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 10 }} dy={5} />
-                                                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10 }} tickFormatter={(v) => `k${Math.round(v / 1000)}`} />
-                                                <RechartsTooltip
-                                                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
-                                                    labelStyle={{ fontWeight: 'bold', color: '#4B5563' }}
-                                                    formatter={(val) => formatCurrency(val as number)}
-                                                />
-                                                <Bar dataKey="revenue" fill="#8B5CF6" barSize={16} radius={[4, 4, 0, 0]} fillOpacity={0.6} />
-                                                <Line type="monotone" dataKey="forecast" stroke="#EC4899" strokeWidth={3} dot={false} strokeDasharray="4 4" />
-                                            </ComposedChart>
-                                        </ResponsiveContainer>
+                                    <h3 className="text-xl font-bold text-gray-900">FoodCost AI Advisor</h3>
+                                    <p className="text-gray-500 max-w-md">
+                                        Obtenha previsões de vendas e insights de engenharia de cardápio com nossa Inteligência Artificial Exclusiva.
+                                    </p>
+                                    <div className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg font-bold text-sm shadow-lg">
+                                        <Lock size={14} /> Disponível no Plano PRO
                                     </div>
-
-                                    <div className="bg-white/60 p-3 rounded-lg border border-violet-100 text-xs text-gray-600">
-                                        <span className="font-bold text-violet-700">Previsão (7 dias):</span> {formatCurrency(salesForecast.data.filter(d => d.forecast).reduce((sum, d) => sum + (d.forecast || 0), 0) / (salesForecast.data.filter(d => d.forecast).length || 1) * 7)}
-                                        <span className="block mt-1 opacity-80">Baseado no histórico dos últimos 30 dias.</span>
-                                    </div>
-                                </div>
-
-                                {/* Coluna 2: Insights Estratégicos (Ação) */}
-                                <div className="space-y-4">
-                                    <h4 className="text-sm font-bold text-gray-800 flex items-center gap-2">
-                                        <Lightbulb size={16} className="text-amber-500" />
-                                        Insights de Otimização
-                                    </h4>
-
-                                    <div className="space-y-3 max-h-[280px] overflow-y-auto pr-2 custom-scrollbar">
-                                        {menuInsights.length > 0 ? (
-                                            menuInsights.map((insight, idx) => (
-                                                <div key={idx} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-all group">
-                                                    <div className="flex items-start gap-3">
-                                                        <div className={`p-2 rounded-lg flex-shrink-0 ${insight.type === 'success' ? 'bg-green-100 text-green-600' :
-                                                            insight.type === 'warning' ? 'bg-amber-100 text-amber-600' :
-                                                                insight.type === 'info' ? 'bg-blue-100 text-blue-600' :
-                                                                    'bg-gray-100'
-                                                            }`}>
-                                                            {insight.icon === 'Star' ? <Award size={18} /> :
-                                                                insight.icon === 'TrendingUp' ? <TrendingUp size={18} /> :
-                                                                    <Megaphone size={18} />}
-                                                        </div>
-                                                        <div>
-                                                            <h5 className="font-bold text-gray-800 text-sm group-hover:text-violet-700 transition-colors">{insight.title}</h5>
-                                                            <p className="text-xs text-gray-600 mt-1 leading-relaxed">
-                                                                {insight.description}
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))
-                                        ) : (
-                                            <div className="text-center py-8 text-gray-400 text-sm bg-white/40 rounded-xl border border-dashed border-gray-200">
-                                                <Sparkles className="mx-auto mb-2 opacity-50" />
-                                                Coletando dados para gerar insights...
-                                            </div>
-                                        )}
-
-                                        {/* Insight Padrão de Anomalia (Simulado se não tiver warning real) */}
-                                        {salesForecast.trend === 'down' && (
-                                            <div className="bg-red-50 p-4 rounded-xl shadow-sm border border-red-100">
-                                                <div className="flex items-start gap-3">
-                                                    <div className="p-2 rounded-lg bg-red-100 text-red-600 flex-shrink-0">
-                                                        <AlertTriangle size={18} />
-                                                    </div>
-                                                    <div>
-                                                        <h5 className="font-bold text-red-800 text-sm">Alerta de Tendência</h5>
-                                                        <p className="text-xs text-red-700 mt-1">
-                                                            Detectamos uma queda nas vendas recentes. Considere lançar uma <strong>Oferta Relâmpago</strong> para reativar clientes inativos.
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                            </div>
-                        </CardContent>
-                    </Card>
+                                </CardContent>
+                            </Card>
+                        }>
+                            <FoodCostAIAdvisor />
+                        </PlanGuard>
+                    </div>
 
                     {/* Performance de Hoje */}
                     <Card className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white border-0 overflow-hidden">

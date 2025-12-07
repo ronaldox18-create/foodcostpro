@@ -50,6 +50,8 @@ export interface AppSettings {
   estimatedMonthlyBilling: number;
   user_id?: string;
   created_at?: string;
+  plan?: PlanType;
+  plan_expires_at?: string;
 }
 
 export interface CalculatedProduct extends Product {
@@ -146,8 +148,11 @@ import { User as SupabaseUser } from '@supabase/supabase-js';
 
 export interface AuthContextType {
   user: SupabaseUser | null;
+  userPlan: PlanType;
+  checkAccess: (feature: any) => boolean | 'basic' | 'advanced' | 'unlimited' | number; // rough typing to avoid circular dep issues in types file
   signIn: (email: string, pass: string) => Promise<any>;
   signOut: () => Promise<void>;
+  refreshUserPlan: () => Promise<void>;
 }
 
 // --- Sistema de Horários de Funcionamento ---

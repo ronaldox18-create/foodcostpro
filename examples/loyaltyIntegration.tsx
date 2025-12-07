@@ -5,14 +5,20 @@
  * com o fluxo de pedidos existente.
  */
 
-import { Customer, Order, LoyaltyLevel, LoyaltySettings } from './types';
+import { Customer, Order, LoyaltyLevel, LoyaltySettings } from '../types';
 import {
     calculatePointsEarned,
     updateCustomerAfterPurchase,
     calculateLevelDiscount,
     canRedeemPoints,
-    calculatePointsRedemption
-} from './utils/loyaltySystem';
+    calculatePointsRedemption,
+    isLevelExpired,
+    getLoyaltyStats
+} from '../utils/loyaltySystem';
+import LoyaltyBadge from '../components/LoyaltyBadge';
+
+// Dummy implementation for example purposes
+const processOrder = async () => { console.log('Processing order...'); };
 
 // ============================================
 // EXEMPLO 1: Processar Pedido com Pontos

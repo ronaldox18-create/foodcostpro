@@ -4,8 +4,9 @@ import {
   Save, Store, DollarSign, Globe, Printer, Bell, Zap, TrendingUp,
   Percent, Calculator, FileText, Mail, Phone, MapPin, CreditCard,
   Clock, AlertCircle, CheckCircle, Settings as SettingsIcon, Loader2,
-  Info, ChevronRight, BarChart3, Package, Users
+  Info, ChevronRight, BarChart3, Package, Users, Lock
 } from 'lucide-react';
+import PlanGuard from '../components/PlanGuard';
 
 type TabType = 'business' | 'pricing' | 'system' | 'pdv' | 'notifications' | 'integrations';
 
@@ -131,8 +132,8 @@ const Settings: React.FC = () => {
         {/* Messages */}
         {msg && (
           <div className={`mb-6 p-4 rounded-xl border flex items-center gap-3 animate-in slide-in-from-top-5 ${msg.type === 'success'
-              ? 'bg-green-50 border-green-200 text-green-700'
-              : 'bg-red-50 border-red-200 text-red-700'
+            ? 'bg-green-50 border-green-200 text-green-700'
+            : 'bg-red-50 border-red-200 text-red-700'
             }`}>
             {msg.type === 'success' ? <CheckCircle size={24} /> : <AlertCircle size={24} />}
             <span className="font-medium">{msg.text}</span>
@@ -149,8 +150,8 @@ const Settings: React.FC = () => {
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={`flex-1 min-w-[140px] px-6 py-4 flex items-center justify-center gap-2 font-semibold transition-all ${activeTab === tab.id
-                      ? 'text-orange-600 border-b-2 border-orange-600 bg-orange-50/50'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    ? 'text-orange-600 border-b-2 border-orange-600 bg-orange-50/50'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                     }`}
                 >
                   <Icon className="w-5 h-5" />
@@ -671,20 +672,22 @@ const Settings: React.FC = () => {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-6 border-2 border-green-200">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="p-3 bg-green-600 rounded-xl">
-                      <Zap className="w-6 h-6 text-white" />
+                <PlanGuard feature="whatsappIntegration" showLock={true}>
+                  <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-6 border-2 border-green-200">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="p-3 bg-green-600 rounded-xl">
+                        <Zap className="w-6 h-6 text-white" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-gray-900">WhatsApp Business</h3>
+                        <p className="text-sm text-gray-600">Notificações automáticas</p>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="font-bold text-gray-900">WhatsApp Business</h3>
-                      <p className="text-sm text-gray-600">Notificações automáticas</p>
-                    </div>
+                    <button className="w-full bg-white border-2 border-green-300 text-green-700 py-3 rounded-xl font-semibold hover:bg-green-50 transition-colors flex items-center justify-center gap-2">
+                      <span>Em breve</span>
+                    </button>
                   </div>
-                  <button className="w-full bg-white border-2 border-green-300 text-green-700 py-3 rounded-xl font-semibold hover:bg-green-50 transition-colors flex items-center justify-center gap-2">
-                    <span>Em breve</span>
-                  </button>
-                </div>
+                </PlanGuard>
 
                 <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-6 border-2 border-blue-200">
                   <div className="flex items-center gap-3 mb-4">

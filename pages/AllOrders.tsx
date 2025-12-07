@@ -45,7 +45,7 @@ const AllOrders: React.FC = () => {
             case 'confirmed': return { label: 'Confirmado', color: 'text-blue-600', bgColor: 'bg-blue-50', borderColor: 'border-blue-200', icon: CheckCircle };
             case 'preparing': return { label: 'Preparando', color: 'text-orange-600', bgColor: 'bg-orange-50', borderColor: 'border-orange-200', icon: ChefHat };
             case 'ready': return { label: 'Pronto', color: 'text-green-600', bgColor: 'bg-green-50', borderColor: 'border-green-200', icon: CheckCircle2 };
-            case 'delivered': return { label: 'Entregue', color: 'text-gray-600', bgColor: 'bg-gray-50', borderColor: 'border-gray-200', icon: Truck };
+            case 'delivered': return { label: 'Saiu p/ Entrega', color: 'text-blue-600', bgColor: 'bg-blue-50', borderColor: 'border-blue-200', icon: Truck };
             case 'completed': return { label: 'Concluído', color: 'text-green-600', bgColor: 'bg-green-50', borderColor: 'border-green-200', icon: CheckCircle2 };
             case 'canceled':
                 return { label: 'Cancelado', color: 'text-red-600', bgColor: 'bg-red-50', borderColor: 'border-red-200', icon: XCircle };
