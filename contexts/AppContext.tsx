@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { Ingredient, Product, AppSettings, FixedCost, Customer, Order, OrderItem, Table } from '../types';
 import { useAuth } from './AuthContext';
 import { supabase } from '../utils/supabaseClient';
+import NewOrderModal from '../components/NewOrderModal';
 
 interface AppContextType {
   ingredients: Ingredient[];
@@ -96,7 +97,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             unitPrice: oi.price,
             total: oi.total,
             addedAt: oi.added_at || new Date().toISOString()
-          }))
+          })),
+          integrationSource: o.integration_source,
+          externalId: o.external_id
         }));
         setOrders(formattedOrders);
       }
@@ -171,7 +174,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
               unitPrice: oi.price,
               total: oi.total,
               addedAt: oi.added_at || new Date().toISOString()
-            }))
+            })),
+            integrationSource: o.integration_source,
+            externalId: o.external_id
           }));
           setOrders(formattedOrders);
         }
@@ -812,6 +817,43 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  // --- Realtime Order Listener ---
+  useEffect(() => {
+    if (!user) return;
+
+    console.log("📡 Conectando ao Realtime de Pedidos...");
+
+    const channel = supabase
+      .channel('orders_realtime')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'orders', filter: `user_id=eq.${user.id}` },
+        (payload) => {
+          console.log('🔔 NOVO PEDIDO RECEBIDO VIA REALTIME!', payload);
+
+          // 1. Tocar Som
+          try {
+            const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+            audio.play().catch(e => console.warn("Erro ao tocar som (interação necessária):", e));
+          } catch (e) {
+            console.error("Erro audio:", e);
+          }
+
+          // 2. Atualizar Lista
+          refreshOrders();
+
+          // 3. Notificação Visual (Simples por enquanto)
+          // Se tiver um sistema de Toast, usar aqui. Senão, confiamos na atualização da grade.
+          // Opcional: window.alert("Novo Pedido Chegou!"); // Meio intrusivo, melhor deixar só o som e a grade atualizar.
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
+
   return (
     <AppContext.Provider value={{
       ingredients, products, fixedCosts, settings, customers, orders, tables, categories, loading,
@@ -882,7 +924,89 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       refreshOrders
     }}>
       {children}
+
+      {/* --- POPUP DE NOVO PEDIDO (Flutuante) --- */}
+      {orders.length > 0 && (() => {
+        // Lógica simples: Se houver um pedido "pending" e "ifood" criado nos últimos 2 minutos que ainda não vimos...
+        // Para simplificar, vamos usar um estado local disparado pelo Realtime.
+        return null;
+      })()}
+
+      <IncomingOrderHandler user={user} />
+
     </AppContext.Provider>
+  );
+};
+
+const IncomingOrderHandler = ({ user }: { user: any }) => {
+  const [incomingOrder, setIncomingOrder] = useState<any>(null);
+  const { refreshOrders, updateOrder } = useContext(AppContext)!;
+
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase.channel('alert_realtime_modal')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders', filter: `user_id=eq.${user.id}` },
+        async (payload) => {
+          const rawOrder = payload.new;
+          let mappedItems: any[] = [];
+
+          if (rawOrder.external_metadata && rawOrder.external_metadata.items) {
+            mappedItems = rawOrder.external_metadata.items.map((i: any) => ({
+              product_name: i.name,
+              quantity: i.quantity,
+              price: i.unitPrice,
+              total: i.totalPrice
+            }));
+          }
+
+          setIncomingOrder({
+            id: rawOrder.external_id || rawOrder.id,
+            customer_id: rawOrder.user_id,
+            customer_name: rawOrder.customer_name,
+            total_amount: rawOrder.total_amount,
+            status: rawOrder.status,
+            payment_method: rawOrder.payment_method,
+            delivery_type: rawOrder.delivery_type || (rawOrder.integration_source === 'ifood' ? 'delivery' : 'counter'),
+            phone: rawOrder.external_metadata?.customer?.phone?.number,
+            items: mappedItems,
+            delivery_address: rawOrder.delivery_address || (rawOrder.external_metadata?.delivery?.deliveryAddress?.formattedAddress),
+            internal_id: rawOrder.id // Guardando UUID para update correto
+          });
+
+          try {
+            const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+            audio.play().catch(() => { });
+          } catch (e) { }
+
+          refreshOrders();
+        })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user]);
+
+  if (!incomingOrder) return null;
+
+  return (
+    <NewOrderModal
+      order={incomingOrder}
+      onDismiss={() => setIncomingOrder(null)}
+      onAccept={async () => {
+        // Atualizar status para Em Preparo (Confirmado)
+        if (incomingOrder.internal_id) {
+          // Recriar objeto minimo para updateOrder (que espera um Order completo ou parcial com ID)
+          // Assumindo que updateOrder faz um merge/patch no banco via upsert ou update
+          // Se updateOrder exigir objeto completo, isso pode falhar.
+          // Mas vamos tentar atualizar direto via Supabase aqui para ser mais seguro e não depender da implementação complexa do updateOrder.
+          await supabase.from('orders').update({ status: 'preparing' }).eq('id', incomingOrder.internal_id);
+          await refreshOrders();
+        }
+        setIncomingOrder(null);
+        window.location.hash = '/all-orders';
+      }}
+      onReject={async () => {
+        setIncomingOrder(null);
+      }}
+    />
   );
 };
 

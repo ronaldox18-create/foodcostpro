@@ -122,6 +122,11 @@ export interface Order {
   serviceCharge?: number;
   tip?: number;
   couvert?: number;
+
+  // Integrações
+  external_id?: string;
+  integration_source?: 'interna' | 'ifood' | 'rappi';
+  external_metadata?: any;
 }
 
 // --- NOVO: Sistema de Mesas ---
@@ -343,5 +348,27 @@ export interface POSSale extends Order {
   subtotal: number; // Total antes de taxas e descontos
   loyaltyPointsUsed?: number; // Pontos utilizados
   loyaltyDiscountApplied?: number; // Desconto do programa de fidelidade
+}
+
+/**
+ * Integrações com plataformas externas (iFood, etc)
+ */
+export interface UserIntegration {
+  id: string;
+  user_id: string;
+  provider: 'ifood' | 'rappi' | 'ubereats';
+  is_enabled: boolean;
+  credentials: {
+    clientId?: string;
+    clientSecret?: string;
+    merchantId?: string;
+    accessToken?: string; // Tokens temporários se necessário
+    refreshToken?: string;
+  };
+  status: 'active' | 'error' | 'disconnected';
+  last_synced_at?: string;
+  error_message?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 

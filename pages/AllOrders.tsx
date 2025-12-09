@@ -17,7 +17,7 @@ const AllOrders: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterGroup, setFilterGroup] = useState<'all' | 'active' | 'history' | 'canceled'>('active');
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-    const [selectedSource, setSelectedSource] = useState<'all' | 'virtual' | 'table' | 'counter'>('all');
+    const [selectedSource, setSelectedSource] = useState<'all' | 'virtual' | 'table' | 'counter' | 'ifood'>('all');
     const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
@@ -33,7 +33,8 @@ const AllOrders: React.FC = () => {
     }, [orders]);
 
     // Helpers
-    const getOrderSource = (order: Order): 'virtual' | 'table' | 'counter' => {
+    const getOrderSource = (order: Order): 'virtual' | 'table' | 'counter' | 'ifood' => {
+        if ((order as any).integrationSource === 'ifood' || (order as any).integration_source === 'ifood') return 'ifood';
         if (order.deliveryType) return 'virtual';
         if (order.tableId) return 'table';
         return 'counter';
@@ -55,10 +56,14 @@ const AllOrders: React.FC = () => {
 
     const getSourceInfo = (source: string) => {
         const map = {
-            virtual: { label: 'Cardápio Virtual', icon: Globe },
-            table: { label: 'Mesa/Salão', icon: Utensils },
-            counter: { label: 'Balcão/PDV', icon: Store }
+            virtual: { label: 'Cardápio Virtual', icon: Globe, color: 'text-blue-600' },
+            table: { label: 'Mesa/Salão', icon: Utensils, color: 'text-gray-600' },
+            counter: { label: 'Balcão/PDV', icon: Store, color: 'text-gray-600' },
+            ifood: { label: 'iFood', icon: Store, color: 'text-red-500 font-black' } // Usando Store temporário se não tiver icone especifico, mas vamos customizar
         };
+        // @ts-ignore
+        if (source === 'ifood') return { label: 'iFood', icon: () => <span className="font-black text-red-500 tracking-tighter text-xs">iFood</span>, color: 'text-red-600' };
+
         return map[source as keyof typeof map] || map.counter;
     };
 
@@ -138,10 +143,12 @@ const AllOrders: React.FC = () => {
             if (selectedSource !== 'all') {
                 const isVirtual = (order as any).delivery_type || (order as any).deliveryType;
                 const isTable = order.tableId;
+                const isIfood = (order as any).integrationSource === 'ifood' || (order as any).integration_source === 'ifood';
 
-                if (selectedSource === 'virtual' && !isVirtual) return false;
+                if (selectedSource === 'virtual' && (!isVirtual || isIfood)) return false; // iFood não é virtual padrão
                 if (selectedSource === 'table' && !isTable) return false;
-                if (selectedSource === 'counter' && (isVirtual || isTable)) return false;
+                if (selectedSource === 'counter' && (isVirtual || isTable || isIfood)) return false;
+                if (selectedSource === 'ifood' && !isIfood) return false;
             }
 
             if (searchTerm) {
@@ -271,6 +278,7 @@ const AllOrders: React.FC = () => {
                                 <option value="table">Mesas</option>
                                 <option value="virtual">Delivery</option>
                                 <option value="counter">Balcão</option>
+                                <option value="ifood">iFood</option>
                             </select>
                             <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none">
                                 <Filter size={14} />

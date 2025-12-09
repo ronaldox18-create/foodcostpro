@@ -7,6 +7,7 @@ import {
   Info, ChevronRight, BarChart3, Package, Users, Lock
 } from 'lucide-react';
 import PlanGuard from '../components/PlanGuard';
+import { IntegrationService } from '../services/integrations';
 
 type TabType = 'business' | 'pricing' | 'system' | 'pdv' | 'notifications' | 'integrations';
 
@@ -61,12 +62,18 @@ const Settings: React.FC = () => {
     setMsg(null);
 
     try {
+      // 1. Salvar configurações gerais
       await updateSettings({
         ...settings,
         businessName,
         targetMargin,
         taxAndLossPercent: taxAndLoss
       });
+
+      // 2. Salvar credenciais do iFood (se preenchidas e na aba correta)
+      if (activeTab === 'integrations' && (ifoodClientId || ifoodClientSecret)) {
+        await saveIntegrationCredentials();
+      }
 
       setMsg({ type: 'success', text: 'Configurações salvas com sucesso!' });
       setSaved(true);
@@ -77,6 +84,52 @@ const Settings: React.FC = () => {
       setLoading(false);
     }
   };
+
+  // iFood State
+  const [ifoodClientId, setIfoodClientId] = useState('');
+  const [ifoodClientSecret, setIfoodClientSecret] = useState('');
+  const [ifoodMerchantId, setIfoodMerchantId] = useState('');
+  const [ifoodStatus, setIfoodStatus] = useState<'connected' | 'disconnected' | 'error'>('disconnected');
+
+  // Carregar credenciais existentes
+  useEffect(() => {
+    const loadIntegrations = async () => {
+      try {
+        const ifoodData = await IntegrationService.getIntegration('ifood');
+        if (ifoodData) {
+          if (ifoodData.credentials) {
+            setIfoodClientId(ifoodData.credentials.clientId || '');
+            setIfoodClientSecret(ifoodData.credentials.clientSecret || '');
+            setIfoodMerchantId(ifoodData.credentials.merchantId || '');
+          }
+          if (ifoodData.status === 'active') setIfoodStatus('connected');
+          else if (ifoodData.status === 'error') setIfoodStatus('error');
+          else setIfoodStatus('disconnected');
+        }
+      } catch (error) {
+        console.error("Erro ao carregar integrações:", error);
+      }
+    };
+    if (activeTab === 'integrations') loadIntegrations();
+  }, [activeTab]);
+
+  const saveIntegrationCredentials = async () => {
+    try {
+      await IntegrationService.saveIntegration('ifood', {
+        clientId: ifoodClientId,
+        clientSecret: ifoodClientSecret,
+        merchantId: ifoodMerchantId
+      });
+
+      setIfoodStatus('connected');
+      setMsg({ type: 'success', text: 'Integração iFood salva com sucesso!' });
+    } catch (error: any) {
+      console.error("Erro ao salvar iFood:", error);
+      setIfoodStatus('error');
+      setMsg({ type: 'error', text: 'Erro ao salvar credenciais: ' + error.message });
+    }
+  };
+
 
   const tabs = [
     { id: 'business' as TabType, label: 'Negócio', icon: Store },
@@ -664,78 +717,134 @@ const Settings: React.FC = () => {
           )}
 
           {/* INTEGRATIONS TAB */}
-          {activeTab === 'integrations' && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-5">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">Integrações</h2>
-                <p className="text-gray-600">Conecte com serviços externos</p>
-              </div>
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-5">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Integrações</h2>
+              <p className="text-gray-600">Conecte seu sistema com serviços externos</p>
+            </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <PlanGuard feature="whatsappIntegration" showLock={true}>
-                  <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-6 border-2 border-green-200">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="p-3 bg-green-600 rounded-xl">
-                        <Zap className="w-6 h-6 text-white" />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+              {/* iFood Integration Card */}
+              <PlanGuard feature="integrations" showLock={true}>
+                <div className="bg-white rounded-2xl border-2 border-red-100 shadow-sm overflow-hidden">
+                  <div className="p-6 border-b border-red-50 bg-gradient-to-r from-red-50 to-white">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className="bg-white p-2 rounded-xl border border-red-100 shadow-sm">
+                          {/* iFood Logo Placeholder or Icon */}
+                          <img src="https://logodownload.org/wp-content/uploads/2017/05/ifood-logo-0.png" alt="iFood" className="w-10 h-10 object-contain" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-gray-900 text-lg">iFood</h3>
+                          <p className="text-sm text-gray-600">Receba pedidos automaticamente</p>
+                        </div>
                       </div>
-                      <div>
-                        <h3 className="font-bold text-gray-900">WhatsApp Business</h3>
-                        <p className="text-sm text-gray-600">Notificações automáticas</p>
+                      <div className="flex items-center gap-2">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ifoodStatus === 'connected' ? 'bg-green-100 text-green-800' :
+                          ifoodStatus === 'error' ? 'bg-red-100 text-red-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                          {ifoodStatus === 'connected' ? 'Conectado' :
+                            ifoodStatus === 'error' ? 'Erro' : 'Desconectado'}
+                        </span>
                       </div>
                     </div>
-                    <button className="w-full bg-white border-2 border-green-300 text-green-700 py-3 rounded-xl font-semibold hover:bg-green-50 transition-colors flex items-center justify-center gap-2">
-                      <span>Em breve</span>
-                    </button>
                   </div>
-                </PlanGuard>
 
-                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-6 border-2 border-blue-200">
+                  <div className="p-6 space-y-4">
+                    <div className="bg-blue-50 text-blue-800 text-sm p-4 rounded-xl flex gap-3">
+                      <Info className="w-5 h-5 flex-shrink-0" />
+                      <div>
+                        Para integrar, você precisa das credenciais de desenvolvedor do iFood.
+                        <a href="https://developer.ifood.com.br/" target="_blank" rel="noopener noreferrer" className="font-bold underline ml-1">
+                          Acesse o Portal do Desenvolvedor
+                        </a>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-sm font-semibold text-gray-700 block mb-1">
+                          Client ID
+                        </label>
+                        <input
+                          value={ifoodClientId}
+                          onChange={(e) => setIfoodClientId(e.target.value)}
+                          type="text"
+                          placeholder="Ex: 4945-8495-..."
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none text-sm"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-semibold text-gray-700 block mb-1">
+                          Client Secret
+                        </label>
+                        <input
+                          value={ifoodClientSecret}
+                          onChange={(e) => setIfoodClientSecret(e.target.value)}
+                          type="password"
+                          placeholder="••••••••••••••••"
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none text-sm"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-semibold text-gray-700 block mb-1">
+                          Merchant ID (Opcional)
+                        </label>
+                        <input
+                          value={ifoodMerchantId}
+                          onChange={(e) => setIfoodMerchantId(e.target.value)}
+                          type="text"
+                          placeholder="ID da loja"
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none text-sm"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pt-2">
+                      <button
+                        onClick={handleSaveSettings}
+                        disabled={loading}
+                        className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition-colors shadow-lg shadow-red-200 disabled:opacity-50">
+                        {loading ? <Loader2 className="animate-spin inline-block mr-2" /> : null}
+                        {ifoodStatus === 'connected' ? 'Salvar Alterações' : 'Conectar iFood'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </PlanGuard>
+
+              {/* Other Integrations (Coming Soon) */}
+              <div className="space-y-6">
+                <div className="bg-gray-50 rounded-2xl p-6 border border-gray-200 opacity-75">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="p-3 bg-blue-600 rounded-xl">
-                      <CreditCard className="w-6 h-6 text-white" />
+                    <div className="p-3 bg-blue-100 rounded-xl">
+                      <CreditCard className="w-6 h-6 text-blue-600" />
                     </div>
                     <div>
                       <h3 className="font-bold text-gray-900">Mercado Pago</h3>
-                      <p className="text-sm text-gray-600">Pagamentos online</p>
+                      <p className="text-sm text-gray-600">Pagamentos online (Em breve)</p>
                     </div>
                   </div>
-                  <button className="w-full bg-white border-2 border-blue-300 text-blue-700 py-3 rounded-xl font-semibold hover:bg-blue-50 transition-colors">
-                    Em breve
-                  </button>
                 </div>
 
-                <div className="bg-gradient-to-br from-orange-50 to-red-50 rounded-2xl p-6 border-2 border-orange-200">
+                <div className="bg-gray-50 rounded-2xl p-6 border border-gray-200 opacity-75">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="p-3 bg-orange-600 rounded-xl">
-                      <Package className="w-6 h-6 text-white" />
+                    <div className="p-3 bg-green-100 rounded-xl">
+                      <Zap className="w-6 h-6 text-green-600" />
                     </div>
                     <div>
-                      <h3 className="font-bold text-gray-900">iFood</h3>
-                      <p className="text-sm text-gray-600">Pedidos de delivery</p>
+                      <h3 className="font-bold text-gray-900">WhatsApp Business</h3>
+                      <p className="text-sm text-gray-600">Notificações automáticas (Em breve)</p>
                     </div>
                   </div>
-                  <button className="w-full bg-white border-2 border-orange-300 text-orange-700 py-3 rounded-xl font-semibold hover:bg-orange-50 transition-colors">
-                    Em breve
-                  </button>
-                </div>
-
-                <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-6 border-2 border-purple-200">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="p-3 bg-purple-600 rounded-xl">
-                      <FileText className="w-6 h-6 text-white" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-gray-900">NFe/NFCe</h3>
-                      <p className="text-sm text-gray-600">Emissão fiscal</p>
-                    </div>
-                  </div>
-                  <button className="w-full bg-white border-2 border-purple-300 text-purple-700 py-3 rounded-xl font-semibold hover:bg-purple-50 transition-colors">
-                    Em breve
-                  </button>
                 </div>
               </div>
             </div>
-          )}
+          </div>
 
           {/* Save Button (Fixed at bottom) */}
           <div className="flex justify-end pt-6 border-t border-gray-200 mt-8">

@@ -14,6 +14,7 @@ export interface PlanFeatures {
         supportPriority: boolean;
         pdv: boolean;
         digitalMenu: boolean;
+        integrations: boolean; // iFood, etc
     };
 }
 
@@ -32,6 +33,7 @@ export const PLANS: Record<PlanType, PlanFeatures> = {
             supportPriority: false,
             pdv: true,
             digitalMenu: false,
+            integrations: false,
         },
     },
     starter: {
@@ -48,6 +50,7 @@ export const PLANS: Record<PlanType, PlanFeatures> = {
             supportPriority: false,
             pdv: false,
             digitalMenu: false,
+            integrations: false,
         },
     },
     online: {
@@ -64,6 +67,7 @@ export const PLANS: Record<PlanType, PlanFeatures> = {
             supportPriority: false,
             pdv: false,
             digitalMenu: true,
+            integrations: true,
         },
     },
     pro: {
@@ -80,6 +84,7 @@ export const PLANS: Record<PlanType, PlanFeatures> = {
             supportPriority: true,
             pdv: true,
             digitalMenu: true,
+            integrations: true,
         },
     },
 
