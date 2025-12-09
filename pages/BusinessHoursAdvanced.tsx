@@ -4,12 +4,12 @@ import { supabase } from '../utils/supabaseClient';
 import { BusinessHours, SpecialHours, ServiceType, NotificationPreferences } from '../types';
 import {
     Save, Clock, ToggleLeft, ToggleRight, AlertCircle, CheckCircle2,
-    Calendar, Plus, Trash2, Bell, Coffee, Truck, Store, Globe
+    Calendar, Plus, Trash2, Bell, Coffee, Truck, Store, Globe, Lock
 } from 'lucide-react';
 import { getDayName, getServiceTypeLabel, formatTime } from '../utils/businessHours';
 
 const BusinessHoursAdvanced: React.FC = () => {
-    const { user } = useAuth();
+    const { user, userPlan } = useAuth();
     const [businessHours, setBusinessHours] = useState<BusinessHours[]>([]);
     const [specialHours, setSpecialHours] = useState<SpecialHours[]>([]);
     const [notifications, setNotifications] = useState<NotificationPreferences | null>(null);
@@ -18,7 +18,14 @@ const BusinessHoursAdvanced: React.FC = () => {
     const [saved, setSaved] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'regular' | 'special' | 'notifications'>('regular');
-    const [selectedServiceType, setSelectedServiceType] = useState<ServiceType>('all');
+
+    // Determine default service type based on plan
+    const getDefaultServiceType = (): ServiceType => {
+        if (userPlan === 'online') return 'delivery';
+        return 'all';
+    };
+
+    const [selectedServiceType, setSelectedServiceType] = useState<ServiceType>(getDefaultServiceType());
 
     // Form para novo horário especial
     const [newSpecial, setNewSpecial] = useState({
@@ -31,14 +38,24 @@ const BusinessHoursAdvanced: React.FC = () => {
     });
 
     useEffect(() => {
+        if (userPlan === 'online') {
+            setSelectedServiceType('delivery');
+        }
+    }, [userPlan]);
+
+    useEffect(() => {
         if (!user) return;
+        // Se o plano for 'starter' (local apenas), talvez nem precisemos carregar,
+        // mas vamos carregar para evitar erros se o componente for montado.
+        // A UI vai bloquear a edição.
         fetchData();
-    }, [user, selectedServiceType]);
+    }, [user, selectedServiceType, userPlan]);
 
     const fetchData = async () => {
         if (!user) return;
 
         try {
+            setLoading(true);
             // Buscar horários regulares
             const { data: hoursData, error: hoursError } = await supabase
                 .from('business_hours')
@@ -162,8 +179,9 @@ const BusinessHoursAdvanced: React.FC = () => {
             // Validar horários
             for (const hours of businessHours) {
                 if (hours.is_open && hours.open_time && hours.close_time) {
-                    if (hours.open_time >= hours.close_time) {
-                        throw new Error(`${getDayName(hours.day_of_week)}: Horário de abertura deve ser antes do fechamento`);
+                    // Permitir virada de noite (open > close), apenas garantir que não sejam iguais
+                    if (hours.open_time === hours.close_time) {
+                        throw new Error(`${getDayName(hours.day_of_week)}: Horário de abertura não pode ser igual ao fechamento`);
                     }
 
                     // Validar pausa
@@ -171,8 +189,23 @@ const BusinessHoursAdvanced: React.FC = () => {
                         if (hours.pause_start >= hours.pause_end) {
                             throw new Error(`${getDayName(hours.day_of_week)}: Início da pausa deve ser antes do fim`);
                         }
-                        if (hours.pause_start < hours.open_time || hours.pause_end > hours.close_time) {
-                            throw new Error(`${getDayName(hours.day_of_week)}: Pausa deve estar dentro do horário de funcionamento`);
+
+                        const isOvernight = hours.open_time > hours.close_time;
+
+                        if (!isOvernight) {
+                            // Horário normal (ex: 08:00 - 18:00)
+                            if (hours.pause_start < hours.open_time || hours.pause_end > hours.close_time) {
+                                throw new Error(`${getDayName(hours.day_of_week)}: Pausa deve estar dentro do horário de funcionamento`);
+                            }
+                        } else {
+                            // Horário noturno (ex: 18:00 - 02:00)
+                            // Pausa deve estar no primeiro turno (>= open) OU no segundo turno (<= close)
+                            const inFirstTurn = hours.pause_start >= hours.open_time; // ex: 23:00 start (ok)
+                            const inSecondTurn = hours.pause_end <= hours.close_time; // ex: 01:00 end (ok)
+
+                            if (!inFirstTurn && !inSecondTurn) {
+                                throw new Error(`${getDayName(hours.day_of_week)}: Pausa deve estar dentro do horário de funcionamento`);
+                            }
                         }
                     }
                 }
@@ -191,14 +224,12 @@ const BusinessHoursAdvanced: React.FC = () => {
                 service_type: hours.service_type
             }));
 
-            for (const update of updates) {
-                const { error } = await supabase
-                    .from('business_hours')
-                    .update(update)
-                    .eq('id', update.id);
+            // Usar UPSERT para garantir que salve mesmo que haja inconsistências
+            const { error: upsertError } = await supabase
+                .from('business_hours')
+                .upsert(updates);
 
-                if (error) throw error;
-            }
+            if (upsertError) throw upsertError;
 
             setSaved(true);
             setTimeout(() => setSaved(false), 3000);
@@ -289,6 +320,27 @@ const BusinessHoursAdvanced: React.FC = () => {
         }
     };
 
+    if (userPlan === 'starter') {
+        return (
+            <div className="max-w-4xl mx-auto py-12 px-4">
+                <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 text-center">
+                    <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Store className="text-blue-500" size={32} />
+                    </div>
+                    <h2 className="text-2xl font-bold text-gray-900 mb-2">Configuração de Horários Simplificada</h2>
+                    <p className="text-gray-600 max-w-lg mx-auto mb-6">
+                        Seu plano atual é focado no atendimento local, onde a gestão rigorosa de horários online não é necessária.
+                        Sua loja opera de acordo com sua disponibilidade física.
+                    </p>
+                    <div className="flex items-center justify-center gap-2 text-sm text-gray-500 bg-gray-50 py-2 px-4 rounded-full inline-flex">
+                        <Lock size={14} />
+                        Disponível nos planos Online e Pro
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     if (loading) {
         return (
             <div className="flex items-center justify-center py-12">
@@ -301,14 +353,16 @@ const BusinessHoursAdvanced: React.FC = () => {
     }
 
     return (
-        <div className="max-w-6xl mx-auto">
-            <div className="mb-6">
+        <div className="max-w-5xl mx-auto py-6">
+            <div className="mb-8">
                 <h2 className="text-2xl font-bold text-gray-900 mb-2 flex items-center gap-2">
                     <Clock className="text-orange-500" size={28} />
-                    Horários de Funcionamento Avançado
+                    Horários de Funcionamento
                 </h2>
                 <p className="text-gray-600 text-sm">
-                    Configure horários regulares, pausas, feriados e notificações.
+                    {userPlan === 'online'
+                        ? 'Configure quando seu delivery está disponível para receber pedidos.'
+                        : 'Gerencie os horários de funcionamento do seu delivery e atendimento local.'}
                 </p>
             </div>
 
@@ -332,143 +386,146 @@ const BusinessHoursAdvanced: React.FC = () => {
             <div className="mb-6 flex gap-2 border-b border-gray-200">
                 <button
                     onClick={() => setActiveTab('regular')}
-                    className={`px-4 py-3 font-semibold text-sm transition-colors border-b-2 ${activeTab === 'regular'
-                            ? 'border-orange-500 text-orange-600'
-                            : 'border-transparent text-gray-500 hover:text-gray-700'
+                    className={`px-4 py-3 font-semibold text-sm transition-all border-b-2 flex items-center gap-2 ${activeTab === 'regular'
+                        ? 'border-orange-500 text-orange-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-t-md'
                         }`}
                 >
-                    <Clock size={16} className="inline mr-2" />
+                    <Clock size={16} />
                     Horários Regulares
                 </button>
                 <button
                     onClick={() => setActiveTab('special')}
-                    className={`px-4 py-3 font-semibold text-sm transition-colors border-b-2 ${activeTab === 'special'
-                            ? 'border-orange-500 text-orange-600'
-                            : 'border-transparent text-gray-500 hover:text-gray-700'
+                    className={`px-4 py-3 font-semibold text-sm transition-all border-b-2 flex items-center gap-2 ${activeTab === 'special'
+                        ? 'border-orange-500 text-orange-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-t-md'
                         }`}
                 >
-                    <Calendar size={16} className="inline mr-2" />
+                    <Calendar size={16} />
                     Feriados/Eventos
                 </button>
                 <button
                     onClick={() => setActiveTab('notifications')}
-                    className={`px-4 py-3 font-semibold text-sm transition-colors border-b-2 ${activeTab === 'notifications'
-                            ? 'border-orange-500 text-orange-600'
-                            : 'border-transparent text-gray-500 hover:text-gray-700'
+                    className={`px-4 py-3 font-semibold text-sm transition-all border-b-2 flex items-center gap-2 ${activeTab === 'notifications'
+                        ? 'border-orange-500 text-orange-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-t-md'
                         }`}
                 >
-                    <Bell size={16} className="inline mr-2" />
+                    <Bell size={16} />
                     Notificações
                 </button>
             </div>
 
             {/* Tab: Horários Regulares */}
             {activeTab === 'regular' && (
-                <div className="space-y-6">
-                    {/* Seletor de Tipo de Serviço */}
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                        <h4 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
-                            <Globe size={18} />
-                            Tipo de Serviço
-                        </h4>
-                        <div className="grid grid-cols-3 gap-3">
-                            {(['all', 'delivery', 'pickup'] as ServiceType[]).map(type => (
-                                <button
-                                    key={type}
-                                    onClick={() => setSelectedServiceType(type)}
-                                    className={`p-3 rounded-lg border-2 transition-all ${selectedServiceType === type
+                <div className="space-y-6 animate-fadeIn">
+                    {/* Seletor de Tipo de Serviço (Visível apenas para PRO e FREE) */}
+                    {(userPlan === 'pro' || userPlan === 'free') && (
+                        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                            <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2 text-sm">
+                                <Globe size={16} className="text-gray-500" />
+                                Aplicar para
+                            </h4>
+                            <div className="flex gap-2">
+                                {(['all', 'delivery', 'pickup'] as ServiceType[]).map(type => (
+                                    <button
+                                        key={type}
+                                        onClick={() => setSelectedServiceType(type)}
+                                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all border ${selectedServiceType === type
                                             ? 'border-orange-500 bg-orange-50 text-orange-700'
-                                            : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
-                                        }`}
-                                >
-                                    <div className="flex items-center justify-center gap-2 mb-1">
-                                        {type === 'all' && <Globe size={20} />}
-                                        {type === 'delivery' && <Truck size={20} />}
-                                        {type === 'pickup' && <Store size={20} />}
-                                    </div>
-                                    <p className="text-xs font-semibold">{getServiceTypeLabel(type)}</p>
-                                </button>
-                            ))}
+                                            : 'border-gray-200 bg-gray-50 text-gray-600 hover:bg-white'
+                                            }`}
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            {type === 'all' && <Globe size={14} />}
+                                            {type === 'delivery' && <Truck size={14} />}
+                                            {type === 'pickup' && <Store size={14} />}
+                                            {getServiceTypeLabel(type)}
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
                         </div>
-                        <p className="text-xs text-blue-700 mt-3">
-                            Configure horários diferentes para delivery e balcão, ou use "Delivery e Balcão" para ambos.
-                        </p>
-                    </div>
+                    )}
+
+                    {userPlan === 'online' && (
+                        <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex items-center gap-3">
+                            <div className="bg-blue-100 p-2 rounded-full text-blue-600">
+                                <Truck size={20} />
+                            </div>
+                            <div>
+                                <h4 className="font-semibold text-blue-900 text-sm">Configurando Delivery</h4>
+                                <p className="text-xs text-blue-700">Como você possui o plano Online, estas configurações aplicam-se exclusivamente ao seu delivery.</p>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Tabela de Horários */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                         <div className="divide-y divide-gray-100">
                             {businessHours.map((hours) => {
                                 const dayName = getDayName(hours.day_of_week);
+                                const isClosed = !hours.is_open;
 
                                 return (
-                                    <div key={hours.day_of_week} className="p-4 hover:bg-gray-50 transition-colors">
-                                        <div className="flex flex-col gap-4">
-                                            {/* Linha 1: Dia + Toggle */}
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-32">
-                                                    <div className="font-bold text-gray-900">{dayName}</div>
-                                                </div>
-
+                                    <div key={hours.day_of_week} className={`p-4 transition-colors ${isClosed ? 'bg-gray-50' : 'bg-white'}`}>
+                                        <div className="flex flex-col md:flex-row md:items-center gap-4">
+                                            {/* Coluna 1: Toggle e Dia */}
+                                            <div className="flex items-center justify-between md:w-48 flex-shrink-0">
+                                                <div className="font-bold text-gray-700">{dayName}</div>
                                                 <button
                                                     onClick={() => handleToggleDay(hours.day_of_week)}
-                                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm ${hours.is_open
-                                                            ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                                        }`}
+                                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${hours.is_open ? 'bg-green-500' : 'bg-gray-300'}`}
                                                 >
-                                                    {hours.is_open ? <ToggleRight size={20} /> : <ToggleLeft size={20} />}
-                                                    {hours.is_open ? 'Aberto' : 'Fechado'}
+                                                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${hours.is_open ? 'translate-x-6' : 'translate-x-1'}`} />
                                                 </button>
                                             </div>
 
-                                            {/* Linha 2: Horários */}
+                                            {/* Coluna 2: Horários */}
                                             {hours.is_open && (
-                                                <div className="grid grid-cols-2 gap-4 pl-36">
+                                                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
                                                     {/* Horário de Funcionamento */}
-                                                    <div className="space-y-2">
-                                                        <label className="text-xs font-semibold text-gray-600 uppercase">Funcionamento</label>
-                                                        <div className="flex items-center gap-2">
-                                                            <input
-                                                                type="time"
-                                                                value={hours.open_time ? hours.open_time.slice(0, 5) : ''}
-                                                                onChange={(e) => handleTimeChange(hours.day_of_week, 'open_time', e.target.value)}
-                                                                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none bg-white text-gray-900 font-mono text-sm"
-                                                            />
-                                                            <span className="text-gray-400">—</span>
-                                                            <input
-                                                                type="time"
-                                                                value={hours.close_time ? hours.close_time.slice(0, 5) : ''}
-                                                                onChange={(e) => handleTimeChange(hours.day_of_week, 'close_time', e.target.value)}
-                                                                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none bg-white text-gray-900 font-mono text-sm"
-                                                            />
-                                                        </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <input
+                                                            type="time"
+                                                            value={hours.open_time ? hours.open_time.slice(0, 5) : ''}
+                                                            onChange={(e) => handleTimeChange(hours.day_of_week, 'open_time', e.target.value)}
+                                                            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-1 focus:ring-orange-500 outline-none text-sm text-center"
+                                                        />
+                                                        <span className="text-gray-400">até</span>
+                                                        <input
+                                                            type="time"
+                                                            value={hours.close_time ? hours.close_time.slice(0, 5) : ''}
+                                                            onChange={(e) => handleTimeChange(hours.day_of_week, 'close_time', e.target.value)}
+                                                            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-1 focus:ring-orange-500 outline-none text-sm text-center"
+                                                        />
                                                     </div>
 
                                                     {/* Pausa/Intervalo */}
-                                                    <div className="space-y-2">
-                                                        <label className="text-xs font-semibold text-gray-600 uppercase flex items-center gap-1">
-                                                            <Coffee size={12} />
-                                                            Pausa (Opcional)
-                                                        </label>
-                                                        <div className="flex items-center gap-2">
-                                                            <input
-                                                                type="time"
-                                                                value={hours.pause_start ? hours.pause_start.slice(0, 5) : ''}
-                                                                onChange={(e) => handleTimeChange(hours.day_of_week, 'pause_start', e.target.value)}
-                                                                placeholder="--:--"
-                                                                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none bg-white text-gray-900 font-mono text-sm"
-                                                            />
-                                                            <span className="text-gray-400">—</span>
-                                                            <input
-                                                                type="time"
-                                                                value={hours.pause_end ? hours.pause_end.slice(0, 5) : ''}
-                                                                onChange={(e) => handleTimeChange(hours.day_of_week, 'pause_end', e.target.value)}
-                                                                placeholder="--:--"
-                                                                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none bg-white text-gray-900 font-mono text-sm"
-                                                            />
-                                                        </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="text-xs font-semibold text-gray-500 uppercase w-12 text-right">Pausa?</div>
+                                                        <input
+                                                            type="time"
+                                                            value={hours.pause_start ? hours.pause_start.slice(0, 5) : ''}
+                                                            onChange={(e) => handleTimeChange(hours.day_of_week, 'pause_start', e.target.value)}
+                                                            className="flex-1 px-2 py-2 border border-dashed border-gray-300 rounded-md focus:ring-1 focus:ring-orange-500 outline-none text-sm text-center bg-gray-50"
+                                                            placeholder="--:--"
+                                                        />
+                                                        <span className="text-gray-300">-</span>
+                                                        <input
+                                                            type="time"
+                                                            value={hours.pause_end ? hours.pause_end.slice(0, 5) : ''}
+                                                            onChange={(e) => handleTimeChange(hours.day_of_week, 'pause_end', e.target.value)}
+                                                            className="flex-1 px-2 py-2 border border-dashed border-gray-300 rounded-md focus:ring-1 focus:ring-orange-500 outline-none text-sm text-center bg-gray-50"
+                                                            placeholder="--:--"
+                                                        />
                                                     </div>
+                                                </div>
+                                            )}
+
+                                            {isClosed && (
+                                                <div className="flex-1 text-sm text-gray-400 italic">
+                                                    Fechado
                                                 </div>
                                             )}
                                         </div>
@@ -478,231 +535,239 @@ const BusinessHoursAdvanced: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="flex items-center justify-between">
-                        {saved && (
-                            <div className="flex items-center gap-2 text-green-600 font-medium">
-                                <CheckCircle2 size={18} />
-                                Horários salvos com sucesso!
-                            </div>
-                        )}
-                        {!saved && <div></div>}
-
-                        <button
-                            onClick={handleSaveRegular}
-                            disabled={saving}
-                            className="flex items-center gap-2 bg-gray-900 text-white px-6 py-3 rounded-lg hover:bg-black transition font-medium disabled:opacity-50"
-                        >
-                            <Save size={18} />
-                            {saving ? 'Salvando...' : 'Salvar Horários'}
-                        </button>
+                    <div className="flex items-center justify-end pt-4">
+                        <div className="flex items-center gap-4">
+                            {saved && (
+                                <div className="flex items-center gap-2 text-green-600 font-medium animate-fadeIn">
+                                    <CheckCircle2 size={18} />
+                                    Horários atualizados!
+                                </div>
+                            )}
+                            <button
+                                onClick={handleSaveRegular}
+                                disabled={saving}
+                                className="flex items-center gap-2 bg-gray-900 text-white px-8 py-3 rounded-xl hover:bg-black transition-all font-medium disabled:opacity-70 shadow-lg shadow-gray-200"
+                            >
+                                <Save size={18} />
+                                {saving ? 'Salvando...' : 'Salvar Alterações'}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
 
             {/* Tab: Horários Especiais */}
             {activeTab === 'special' && (
-                <div className="space-y-6">
-                    {/* Form para adicionar */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                        <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-                            <Plus size={20} className="text-orange-500" />
-                            Adicionar Feriado/Evento
-                        </h3>
+                <div className="space-y-6 animate-fadeIn">
+                    <div className="grid md:grid-cols-3 gap-6">
+                        {/* Form (1/3) */}
+                        <div className="md:col-span-1">
+                            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 sticky top-6">
+                                <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-wide">
+                                    <Plus size={16} className="text-orange-500" />
+                                    Novo Evento
+                                </h3>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Data</label>
-                                <input
-                                    type="date"
-                                    value={newSpecial.date}
-                                    onChange={(e) => setNewSpecial({ ...newSpecial, date: e.target.value })}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Nome do Evento</label>
-                                <input
-                                    type="text"
-                                    value={newSpecial.name}
-                                    onChange={(e) => setNewSpecial({ ...newSpecial, name: e.target.value })}
-                                    placeholder="Ex: Natal, Ano Novo..."
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none"
-                                />
-                            </div>
-
-                            <div className="flex items-center gap-3">
-                                <input
-                                    type="checkbox"
-                                    id="special-open"
-                                    checked={newSpecial.is_open}
-                                    onChange={(e) => setNewSpecial({ ...newSpecial, is_open: e.target.checked })}
-                                    className="w-5 h-5 text-orange-600 rounded focus:ring-orange-500"
-                                />
-                                <label htmlFor="special-open" className="text-sm font-medium text-gray-700">
-                                    Loja estará aberta neste dia
-                                </label>
-                            </div>
-
-                            {newSpecial.is_open && (
-                                <>
+                                <div className="space-y-4">
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">Horário</label>
-                                        <div className="flex items-center gap-2">
-                                            <input
-                                                type="time"
-                                                value={newSpecial.open_time}
-                                                onChange={(e) => setNewSpecial({ ...newSpecial, open_time: e.target.value })}
-                                                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none font-mono"
-                                            />
-                                            <span>—</span>
-                                            <input
-                                                type="time"
-                                                value={newSpecial.close_time}
-                                                onChange={(e) => setNewSpecial({ ...newSpecial, close_time: e.target.value })}
-                                                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none font-mono"
-                                            />
-                                        </div>
+                                        <label className="block text-xs font-semibold text-gray-500 mb-1">DATA</label>
+                                        <input
+                                            type="date"
+                                            value={newSpecial.date}
+                                            onChange={(e) => setNewSpecial({ ...newSpecial, date: e.target.value })}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none text-sm"
+                                        />
                                     </div>
-                                </>
-                            )}
+
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-500 mb-1">NOME DO EVENTO</label>
+                                        <input
+                                            type="text"
+                                            value={newSpecial.name}
+                                            onChange={(e) => setNewSpecial({ ...newSpecial, name: e.target.value })}
+                                            placeholder="Ex: Natal"
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none text-sm"
+                                        />
+                                    </div>
+
+                                    <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-lg">
+                                        <input
+                                            type="checkbox"
+                                            id="special-open"
+                                            checked={newSpecial.is_open}
+                                            onChange={(e) => setNewSpecial({ ...newSpecial, is_open: e.target.checked })}
+                                            className="w-4 h-4 text-orange-600 rounded focus:ring-orange-500"
+                                        />
+                                        <label htmlFor="special-open" className="text-sm font-medium text-gray-700 cursor-pointer">
+                                            Abrir neste dia?
+                                        </label>
+                                    </div>
+
+                                    {newSpecial.is_open && (
+                                        <div className="animate-fadeIn">
+                                            <label className="block text-xs font-semibold text-gray-500 mb-1">HORÁRIO</label>
+                                            <div className="flex gap-2">
+                                                <input
+                                                    type="time"
+                                                    value={newSpecial.open_time}
+                                                    onChange={(e) => setNewSpecial({ ...newSpecial, open_time: e.target.value })}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-center"
+                                                />
+                                                <input
+                                                    type="time"
+                                                    value={newSpecial.close_time}
+                                                    onChange={(e) => setNewSpecial({ ...newSpecial, close_time: e.target.value })}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-center"
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <button
+                                        onClick={handleAddSpecial}
+                                        className="w-full bg-orange-500 text-white px-4 py-2.5 rounded-lg hover:bg-orange-600 transition font-medium text-sm shadow-sm"
+                                    >
+                                        Adicionar Evento
+                                    </button>
+                                </div>
+                            </div>
                         </div>
 
-                        <button
-                            onClick={handleAddSpecial}
-                            className="flex items-center gap-2 bg-orange-500 text-white px-4 py-2 rounded-lg hover:bg-orange-600 transition font-medium"
-                        >
-                            <Plus size={18} />
-                            Adicionar
-                        </button>
-                    </div>
-
-                    {/* Lista de horários especiais */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                        <h3 className="font-bold text-gray-900 mb-4">Próximos Feriados/Eventos</h3>
-
-                        {specialHours.length === 0 ? (
-                            <p className="text-gray-500 text-sm text-center py-8">
-                                Nenhum horário especial configurado
-                            </p>
-                        ) : (
-                            <div className="space-y-3">
-                                {specialHours.map(special => (
-                                    <div key={special.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
-                                        <div>
-                                            <div className="flex items-center gap-3 mb-1">
-                                                <span className="font-bold text-gray-900">{special.name}</span>
-                                                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${special.is_open ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                                                    }`}>
-                                                    {special.is_open ? 'Aberto' : 'Fechado'}
-                                                </span>
-                                            </div>
-                                            <div className="text-sm text-gray-600">
-                                                {new Date(special.date + 'T00:00:00').toLocaleDateString('pt-BR', {
-                                                    day: '2-digit',
-                                                    month: 'long',
-                                                    year: 'numeric'
-                                                })}
-                                                {special.is_open && special.open_time && ` • ${formatTime(special.open_time)} - ${formatTime(special.close_time || '')}`}
-                                            </div>
+                        {/* List (2/3) */}
+                        <div className="md:col-span-2">
+                            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                                {specialHours.length === 0 ? (
+                                    <div className="text-center py-12 px-4">
+                                        <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                                            <Calendar className="text-gray-300" size={32} />
                                         </div>
-                                        <button
-                                            onClick={() => handleDeleteSpecial(special.id)}
-                                            className="text-red-600 hover:text-red-700 p-2"
-                                        >
-                                            <Trash2 size={18} />
-                                        </button>
+                                        <p className="text-gray-500 font-medium">Nenhum evento especial configurado</p>
+                                        <p className="text-gray-400 text-sm mt-1">Adicione feriados ou datas importantes.</p>
                                     </div>
-                                ))}
+                                ) : (
+                                    <div className="divide-y divide-gray-100">
+                                        {specialHours.map(special => (
+                                            <div key={special.id} className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
+                                                <div className="flex items-center gap-4">
+                                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${special.is_open ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                                                        {special.is_open ? <Clock size={20} /> : <Lock size={20} />}
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-bold text-gray-900">{special.name}</h4>
+                                                        <p className="text-sm text-gray-500">
+                                                            {new Date(special.date + 'T00:00:00').toLocaleDateString('pt-BR', {
+                                                                weekday: 'long',
+                                                                day: 'numeric',
+                                                                month: 'long'
+                                                            })}
+                                                        </p>
+                                                        {special.is_open && (
+                                                            <p className="text-xs text-green-600 font-medium mt-0.5">
+                                                                {formatTime(special.open_time || '')} às {formatTime(special.close_time || '')}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleDeleteSpecial(special.id)}
+                                                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                                    title="Remover"
+                                                >
+                                                    <Trash2 size={18} />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
-                        )}
+                        </div>
                     </div>
                 </div>
             )}
 
             {/* Tab: Notificações */}
             {activeTab === 'notifications' && notifications && (
-                <div className="space-y-6">
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                        <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-                            <Bell size={20} className="text-orange-500" />
-                            Preferências de Notificação
-                        </h3>
+                <div className="space-y-6 animate-fadeIn max-w-2xl mx-auto">
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                        <div className="p-6 border-b border-gray-100 bg-gray-50">
+                            <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                                <Bell size={20} className="text-orange-500" />
+                                Preferências de Alerta
+                            </h3>
+                            <p className="text-sm text-gray-500 mt-1">Controle como você deseja ser notificado sobre seus horários.</p>
+                        </div>
 
-                        <div className="space-y-4">
-                            <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
-                                <input
-                                    type="checkbox"
-                                    id="notify-open"
-                                    checked={notifications.notify_on_open}
-                                    onChange={(e) => setNotifications({ ...notifications, notify_on_open: e.target.checked })}
-                                    className="w-5 h-5 text-orange-600 rounded focus:ring-orange-500 mt-0.5"
-                                />
+                        <div className="divide-y divide-gray-100">
+                            <div className="p-4 sm:p-6 flex items-start gap-4 hover:bg-gray-50 transition-colors">
+                                <div className="mt-1">
+                                    <input
+                                        type="checkbox"
+                                        id="notify-open"
+                                        checked={notifications.notify_on_open}
+                                        onChange={(e) => setNotifications({ ...notifications, notify_on_open: e.target.checked })}
+                                        className="w-5 h-5 text-orange-600 rounded focus:ring-orange-500"
+                                    />
+                                </div>
                                 <div>
-                                    <label htmlFor="notify-open" className="font-medium text-gray-900 cursor-pointer">
-                                        Notificar quando a loja abrir
+                                    <label htmlFor="notify-open" className="block font-medium text-gray-900 cursor-pointer">
+                                        Alerta de Abertura
                                     </label>
-                                    <p className="text-sm text-gray-600">Receba um alerta quando for hora de abrir a loja</p>
+                                    <p className="text-sm text-gray-500 mt-1">Receba uma notificação no sistema quando chegar a hora de abrir a loja.</p>
                                 </div>
                             </div>
 
-                            <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
-                                <input
-                                    type="checkbox"
-                                    id="notify-close"
-                                    checked={notifications.notify_on_close_soon}
-                                    onChange={(e) => setNotifications({ ...notifications, notify_on_close_soon: e.target.checked })}
-                                    className="w-5 h-5 text-orange-600 rounded focus:ring-orange-500 mt-0.5"
-                                />
+                            <div className="p-4 sm:p-6 flex items-start gap-4 hover:bg-gray-50 transition-colors">
+                                <div className="mt-1">
+                                    <input
+                                        type="checkbox"
+                                        id="notify-close"
+                                        checked={notifications.notify_on_close_soon}
+                                        onChange={(e) => setNotifications({ ...notifications, notify_on_close_soon: e.target.checked })}
+                                        className="w-5 h-5 text-orange-600 rounded focus:ring-orange-500"
+                                    />
+                                </div>
                                 <div>
-                                    <label htmlFor="notify-close" className="font-medium text-gray-900 cursor-pointer">
-                                        Notificar antes de fechar
+                                    <label htmlFor="notify-close" className="block font-medium text-gray-900 cursor-pointer">
+                                        Alerta de Fechamento (Prévia)
                                     </label>
-                                    <p className="text-sm text-gray-600">Receba um alerta {notifications.advance_notice_minutes} minutos antes do fechamento</p>
+                                    <p className="text-sm text-gray-500 mt-1">
+                                        Ser avisado {notifications.advance_notice_minutes} minutos antes do horário de fechar.
+                                    </p>
                                 </div>
                             </div>
 
-                            <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
-                                <input
-                                    type="checkbox"
-                                    id="notify-customers"
-                                    checked={notifications.notify_customers_on_open}
-                                    onChange={(e) => setNotifications({ ...notifications, notify_customers_on_open: e.target.checked })}
-                                    className="w-5 h-5 text-orange-600 rounded focus:ring-orange-500 mt-0.5"
-                                />
+                            <div className="p-4 sm:p-6 flex items-start gap-4 hover:bg-gray-50 transition-colors opacity-50">
+                                <div className="mt-1">
+                                    <input
+                                        type="checkbox"
+                                        id="notify-customers"
+                                        checked={notifications.notify_customers_on_open}
+                                        onChange={(e) => setNotifications({ ...notifications, notify_customers_on_open: e.target.checked })}
+                                        className="w-5 h-5 text-orange-600 rounded focus:ring-orange-500"
+                                        disabled
+                                    />
+                                </div>
                                 <div>
-                                    <label htmlFor="notify-customers" className="font-medium text-gray-900 cursor-pointer">
-                                        Notificar clientes quando abrir
-                                    </label>
-                                    <p className="text-sm text-gray-600">Envie notificação para clientes quando a loja abrir (futuro)</p>
+                                    <div className="flex items-center gap-2">
+                                        <label htmlFor="notify-customers" className="block font-medium text-gray-900 cursor-not-allowed">
+                                            Notificar Clientes
+                                        </label>
+                                        <span className="text-[10px] font-bold bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full uppercase tracking-wide">Em Breve</span>
+                                    </div>
+                                    <p className="text-sm text-gray-500 mt-1">Envio automático de WhatsApp/Email para clientes VIP quando abrir.</p>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <div className="flex items-center justify-between">
-                        {saved && (
-                            <div className="flex items-center gap-2 text-green-600 font-medium">
-                                <CheckCircle2 size={18} />
-                                Preferências salvas!
-                            </div>
-                        )}
-                        {!saved && <div></div>}
-
+                    <div className="flex justify-end">
                         <button
                             onClick={handleSaveNotifications}
-                            className="flex items-center gap-2 bg-gray-900 text-white px-6 py-3 rounded-lg hover:bg-black transition font-medium"
+                            className="bg-gray-900 text-white px-6 py-2.5 rounded-lg hover:bg-black transition font-medium shadow-lg shadow-gray-200 flex items-center gap-2"
                         >
                             <Save size={18} />
                             Salvar Preferências
                         </button>
-                    </div>
-
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                        <p className="text-sm text-blue-700">
-                            <strong>Nota:</strong> As notificações para clientes serão implementadas em breve via WhatsApp/Email.
-                            Por enquanto, apenas notificações internas estão disponíveis.
-                        </p>
                     </div>
                 </div>
             )}

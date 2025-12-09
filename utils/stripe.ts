@@ -56,3 +56,45 @@ export const initiateCheckout = async (plan: 'starter' | 'online' | 'pro') => {
         throw error;
     }
 };
+
+export const manageSubscription = async () => {
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (!session?.access_token) {
+            throw new Error('Usuário não autenticado');
+        }
+
+        const { data, error } = await supabase.functions.invoke('create-portal-session', {
+            body: {
+                returnUrl: window.location.origin + '/account',
+                accessToken: session.access_token // Fallback importante
+            },
+            headers: {
+                Authorization: `Bearer ${session.access_token}`
+            }
+        });
+
+        if (error) {
+            console.error('Erro na função do portal:', error);
+            const errorMessage = error.message || 'Erro ao abrir o portal de gerenciamento';
+            // Tenta extrair mensagem detalhada se disponível
+            if (error instanceof Error && 'context' in error) {
+                // @ts-ignore
+                const body = await (error as any).context?.json().catch(() => null);
+                if (body && body.error) throw new Error(body.error);
+            }
+            throw new Error(errorMessage);
+        }
+
+        if (data?.url) {
+            window.location.href = data.url;
+        } else {
+            throw new Error('URL do portal não retornada');
+        }
+
+    } catch (error: any) {
+        console.error('Erro ao abrir portal:', error);
+        alert(`Não foi possível abrir o portal: ${error.message}`);
+    }
+};

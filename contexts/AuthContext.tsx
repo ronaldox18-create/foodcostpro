@@ -21,7 +21,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(session?.user ?? null);
 
       if (session?.user) {
-        fetchUserPlan(session.user.id);
+        fetchUserPlan(session.user);
       }
 
       setLoading(false);
@@ -32,7 +32,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchUserPlan(session.user.id);
+        fetchUserPlan(session.user);
       } else {
         setUserPlan('pro');
       }
@@ -43,27 +43,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  const fetchUserPlan = async (userId: string) => {
+  const fetchUserPlan = async (userToFetch: User) => {
     try {
       const { data, error } = await supabase
         .from('user_settings')
         .select('plan')
-        .eq('user_id', userId)
+        .eq('user_id', userToFetch.id)
         .single();
 
       if (data && data.plan) {
         if (['starter', 'online', 'pro'].includes(data.plan)) {
           setUserPlan(data.plan as PlanType);
         } else {
-          setUserPlan('pro');
+          // Lógica do Trial: Se for free, verifica se está nos 7 dias
+          const createdAt = new Date(userToFetch.created_at || new Date());
+          const now = new Date();
+          const diffTime = Math.abs(now.getTime() - createdAt.getTime());
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+          if (diffDays <= 7) {
+            console.log(`Trial Ativo: ${7 - diffDays} dias restantes`);
+            setUserPlan('pro');
+          } else {
+            // Trial expirado
+            setUserPlan('free');
+          }
         }
       } else {
-        // Default to pro (trial) if no plan settings found
+        // Sem registro? Assume trial novo
         setUserPlan('pro');
       }
     } catch (err) {
       console.error('Error fetching plan:', err);
-      setUserPlan('pro');
+      setUserPlan('pro'); // Fallback seguro
     }
   };
 
@@ -94,7 +106,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     signIn,
     signOut,
     refreshUserPlan: async () => {
-      if (user) await fetchUserPlan(user.id);
+      if (user) await fetchUserPlan(user);
     }
   };
 

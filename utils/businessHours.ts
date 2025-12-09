@@ -3,6 +3,7 @@ import { BusinessHours, SpecialHours, StoreStatus, ServiceType } from '../types'
 /**
  * Verifica se a loja está aberta no momento atual (VERSÃO AVANÇADA)
  * Considera: horários especiais, pausas, e tipo de serviço
+ * Suporta: horários que cruzam a meia-noite (ex: 18:00 - 02:00)
  */
 export function checkStoreStatus(
     businessHours: BusinessHours[],
@@ -12,9 +13,82 @@ export function checkStoreStatus(
 ): StoreStatus {
     const dayOfWeek = currentDate.getDay(); // 0 = Domingo, 6 = Sábado
     const currentTime = currentDate.toTimeString().slice(0, 8); // HH:MM:SS
-    const currentDateStr = currentDate.toISOString().split('T')[0]; // YYYY-MM-DD
 
-    // 1. PRIORIDADE: Verificar horários especiais (feriados, eventos)
+    // FIX: Usar data local para evitar problema de timezone (UTC travessando meia-noite)
+    const year = currentDate.getFullYear();
+    const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+    const day = String(currentDate.getDate()).padStart(2, '0');
+    const currentDateStr = `${year}-${month}-${day}`; // YYYY-MM-DD Local
+
+    // --- 1. VERIFICAR TURNO DO DIA ANTERIOR (VIRADA DE NOITE) ---
+    // Ex: Agora é 01:00 Terça. Segunda fechava as 02:00.
+    const prevDate = new Date(currentDate);
+    prevDate.setDate(prevDate.getDate() - 1);
+
+    // FIX: Usar data local para o dia anterior
+    const prevYear = prevDate.getFullYear();
+    const prevMonth = String(prevDate.getMonth() + 1).padStart(2, '0');
+    const prevDay = String(prevDate.getDate()).padStart(2, '0');
+    const prevDateStr = `${prevYear}-${prevMonth}-${prevDay}`;
+
+    const prevDayOfWeek = prevDate.getDay();
+
+    // 1.1 Verificar Especial de Ontem
+    const prevSpecial = specialHours.find(h => h.date === prevDateStr);
+    let activePrevHours: any = null;
+    let isPrevSpecial = false;
+
+    if (prevSpecial) {
+        if (prevSpecial.is_open && prevSpecial.open_time && prevSpecial.close_time) {
+            activePrevHours = { ...prevSpecial, day_of_week: prevDayOfWeek };
+            isPrevSpecial = true;
+        }
+    } else {
+        // 1.2 Verificar Regular de Ontem
+        // FILTER para encontrar todas as entradas possíveis (caso haja duplicatas no banco)
+        const possiblePrevHours = businessHours.filter(h =>
+            h.day_of_week === prevDayOfWeek &&
+            (h.service_type === serviceType || h.service_type === 'all' || serviceType === 'all')
+        );
+        const prevRegular = possiblePrevHours.find(h => h.is_open) || possiblePrevHours[0];
+
+        if (prevRegular && prevRegular.is_open && prevRegular.open_time && prevRegular.close_time) {
+            activePrevHours = prevRegular;
+        }
+    }
+
+    // Se ontem tinha um horário configurado que vira a noite (open > close)
+    if (activePrevHours && activePrevHours.open_time && activePrevHours.close_time && activePrevHours.open_time > activePrevHours.close_time) {
+        // Se ainda estamos no horário (antes do fechamento configurado para ontem, ex: 02:00)
+        // OBS: Aqui assumimos que close_time (ex: 02:00:00) é do dia SEGUINTE.
+        // currentTime (ex: 01:00:00) deve ser MENOR que close_time.
+        if (currentTime <= activePrevHours.close_time) {
+
+            // TODO: Lógica de pausa para turno da noite é complexa, simplificando:
+            // Se pausa cruza meia-noite, precisaria verificar. 
+            // Assumindo pausa simples por enquanto ou mesmo dia.
+
+            return {
+                isOpen: true,
+                message: isPrevSpecial
+                    ? `${(activePrevHours as any).name} - Aberto até ${formatTime(activePrevHours.close_time)}`
+                    : `Aberto até ${formatTime(activePrevHours.close_time)}`,
+                reason: isPrevSpecial ? 'special_open' : 'regular_open',
+                specialEvent: isPrevSpecial ? (activePrevHours as any).name : undefined,
+                todayHours: {
+                    open: formatTime(activePrevHours.open_time),
+                    close: formatTime(activePrevHours.close_time),
+                    pauseStart: activePrevHours.pause_start ? formatTime(activePrevHours.pause_start) : undefined,
+                    pauseEnd: activePrevHours.pause_end ? formatTime(activePrevHours.pause_end) : undefined
+                },
+                serviceType
+            };
+        }
+    }
+
+    // --- 2. VERIFICAR HORÁRIO DE HOJE ---
+
+    // 2.1 Verificar horários especiais de hoje
     const todaySpecial = specialHours.find(h => h.date === currentDateStr);
 
     if (todaySpecial) {
@@ -26,13 +100,19 @@ export function checkStoreStatus(
                 message: `Fechado - ${todaySpecial.name}`,
                 reason: 'special_closed',
                 specialEvent: todaySpecial.name,
-                nextOpenTime: nextOpen
+                nextOpenTime: nextOpen,
+                serviceType
             };
         }
 
-        // Verificar se está dentro do horário especial
-        if (currentTime >= todaySpecial.open_time && currentTime <= todaySpecial.close_time) {
-            // Verificar pausa
+        // Verificar se está aberto agora
+        const isOvernight = todaySpecial.open_time > todaySpecial.close_time;
+        const isOpenNow = isOvernight
+            ? currentTime >= todaySpecial.open_time // Overnight: abriu e vai até amanhã
+            : (currentTime >= todaySpecial.open_time && currentTime <= todaySpecial.close_time); // Normal
+
+        if (isOpenNow) {
+            // Verificar pausa (ignorar pausa cruzada complexa por enquanto, assumir pausa normal ou mesmo dia)
             if (todaySpecial.pause_start && todaySpecial.pause_end) {
                 if (currentTime >= todaySpecial.pause_start && currentTime < todaySpecial.pause_end) {
                     return {
@@ -52,7 +132,7 @@ export function checkStoreStatus(
 
             return {
                 isOpen: true,
-                message: `${todaySpecial.name} - Aberto até ${formatTime(todaySpecial.close_time)}`,
+                message: `${todaySpecial.name} - Aberto até ${formatTime(todaySpecial.close_time)}${isOvernight ? ' (amanhã)' : ''}`,
                 reason: 'special_open',
                 specialEvent: todaySpecial.name,
                 todayHours: {
@@ -63,25 +143,36 @@ export function checkStoreStatus(
                 }
             };
         }
+
+        // Se ainda não abriu
+        if (currentTime < todaySpecial.open_time) {
+            return {
+                isOpen: false,
+                message: `Abre às ${formatTime(todaySpecial.open_time)} - ${todaySpecial.name}`,
+                reason: 'outside_hours',
+                todayHours: {
+                    open: formatTime(todaySpecial.open_time),
+                    close: formatTime(todaySpecial.close_time),
+                    pauseStart: todaySpecial.pause_start ? formatTime(todaySpecial.pause_start) : undefined,
+                    pauseEnd: todaySpecial.pause_end ? formatTime(todaySpecial.pause_end) : undefined
+                },
+                serviceType
+            };
+        }
     }
 
-    // 2. Verificar horários regulares
-    const todayHours = businessHours.find(h =>
+    // 2.2 Verificar horários regulares de hoje (COM SUPORTE A MÚLTIPLOS TURNOS/DUPLICATAS)
+    // Encontrar TODAS as entradas válidas para hoje
+    const todayEntries = businessHours.filter(h =>
         h.day_of_week === dayOfWeek &&
+        h.is_open &&
+        h.open_time &&
+        h.close_time &&
         (h.service_type === serviceType || h.service_type === 'all' || serviceType === 'all')
     );
 
-    // Se não há configuração para hoje, considera fechado
-    if (!todayHours) {
-        return {
-            isOpen: false,
-            message: 'Fechado hoje',
-            reason: 'regular_closed'
-        };
-    }
-
-    // Se está marcado como fechado
-    if (!todayHours.is_open || !todayHours.open_time || !todayHours.close_time) {
+    if (todayEntries.length === 0) {
+        // Nenhuma entrada aberta configurada para hoje
         const nextOpen = findNextOpenDay(businessHours, specialHours, dayOfWeek, currentDate, serviceType);
         return {
             isOpen: false,
@@ -92,59 +183,71 @@ export function checkStoreStatus(
         };
     }
 
-    // Verificar se está dentro do horário
-    const isWithinHours = currentTime >= todayHours.open_time && currentTime <= todayHours.close_time;
+    // Verificar se ALGUMA das entradas cobre o horário atual
+    for (const hours of todayEntries) {
+        if (!hours.open_time || !hours.close_time) continue;
 
-    if (isWithinHours) {
-        // Verificar pausa
-        if (todayHours.pause_start && todayHours.pause_end) {
-            if (currentTime >= todayHours.pause_start && currentTime < todayHours.pause_end) {
-                return {
-                    isOpen: false,
-                    message: `Em pausa até ${formatTime(todayHours.pause_end)}`,
-                    reason: 'pause',
-                    todayHours: {
-                        open: formatTime(todayHours.open_time),
-                        close: formatTime(todayHours.close_time),
-                        pauseStart: formatTime(todayHours.pause_start),
-                        pauseEnd: formatTime(todayHours.pause_end)
-                    },
-                    serviceType
-                };
+        const isOvernight = hours.open_time > hours.close_time;
+        const isOpenNow = isOvernight
+            ? currentTime >= hours.open_time
+            : (currentTime >= hours.open_time && currentTime <= hours.close_time);
+
+        if (isOpenNow) {
+            // Verificar pausa
+            if (hours.pause_start && hours.pause_end) {
+                if (currentTime >= hours.pause_start && currentTime < hours.pause_end) {
+                    return {
+                        isOpen: false,
+                        message: `Em pausa até ${formatTime(hours.pause_end)}`,
+                        reason: 'pause',
+                        todayHours: {
+                            open: formatTime(hours.open_time),
+                            close: formatTime(hours.close_time),
+                            pauseStart: formatTime(hours.pause_start),
+                            pauseEnd: formatTime(hours.pause_end)
+                        },
+                        serviceType
+                    };
+                }
             }
-        }
 
-        return {
-            isOpen: true,
-            message: `Aberto até ${formatTime(todayHours.close_time)}`,
-            reason: 'regular_open',
-            todayHours: {
-                open: formatTime(todayHours.open_time),
-                close: formatTime(todayHours.close_time),
-                pauseStart: todayHours.pause_start ? formatTime(todayHours.pause_start) : undefined,
-                pauseEnd: todayHours.pause_end ? formatTime(todayHours.pause_end) : undefined
-            },
-            serviceType
-        };
+            return {
+                isOpen: true,
+                message: `Aberto até ${formatTime(hours.close_time)}${isOvernight ? ' (amanhã)' : ''}`,
+                reason: 'regular_open',
+                todayHours: {
+                    open: formatTime(hours.open_time),
+                    close: formatTime(hours.close_time),
+                    pauseStart: hours.pause_start ? formatTime(hours.pause_start) : undefined,
+                    pauseEnd: hours.pause_end ? formatTime(hours.pause_end) : undefined
+                },
+                serviceType
+            };
+        }
     }
 
-    // Fechado mas abre hoje ainda
-    if (currentTime < todayHours.open_time) {
+    // Se chegou aqui, não está aberto em nenhum dos turnos.
+    // Verificar qual o próximo turno DE HOJE (ex: almoço acabou, vai abrir jantar)
+    const upcomingEntryToday = todayEntries
+        .filter(h => h.open_time && h.open_time > currentTime)
+        .sort((a, b) => (a.open_time || '').localeCompare(b.open_time || ''))[0];
+
+    if (upcomingEntryToday && upcomingEntryToday.open_time) {
         return {
             isOpen: false,
-            message: `Abre hoje às ${formatTime(todayHours.open_time)}`,
+            message: `Abre hoje às ${formatTime(upcomingEntryToday.open_time)}`,
             reason: 'outside_hours',
             todayHours: {
-                open: formatTime(todayHours.open_time),
-                close: formatTime(todayHours.close_time),
-                pauseStart: todayHours.pause_start ? formatTime(todayHours.pause_start) : undefined,
-                pauseEnd: todayHours.pause_end ? formatTime(todayHours.pause_end) : undefined
+                open: formatTime(upcomingEntryToday.open_time),
+                close: formatTime(upcomingEntryToday.close_time || ''),
+                pauseStart: upcomingEntryToday.pause_start ? formatTime(upcomingEntryToday.pause_start) : undefined,
+                pauseEnd: upcomingEntryToday.pause_end ? formatTime(upcomingEntryToday.pause_end) : undefined
             },
             serviceType
         };
     }
 
-    // Já passou do horário de hoje
+    // Já passou de todos os horários de hoje
     const nextOpen = findNextOpenDay(businessHours, specialHours, dayOfWeek, currentDate, serviceType);
     return {
         isOpen: false,
@@ -172,7 +275,11 @@ function findNextOpenDay(
         const nextDate = new Date(currentDate);
         nextDate.setDate(nextDate.getDate() + i);
         const nextDay = nextDate.getDay();
-        const nextDateStr = nextDate.toISOString().split('T')[0];
+        // FIX: Timezone safe date string
+        const year = nextDate.getFullYear();
+        const month = String(nextDate.getMonth() + 1).padStart(2, '0');
+        const day = String(nextDate.getDate()).padStart(2, '0');
+        const nextDateStr = `${year}-${month}-${day}`;
 
         // Verificar horário especial primeiro
         const special = specialHours.find(h => h.date === nextDateStr);
@@ -332,7 +439,11 @@ export function getServiceTypeLabel(serviceType: ServiceType): string {
  * Verifica se uma data é feriado especial
  */
 export function isSpecialDay(date: Date, specialHours: SpecialHours[]): SpecialHours | undefined {
-    const dateStr = date.toISOString().split('T')[0];
+    // FIX: Timezone safe date string
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
     return specialHours.find(h => h.date === dateStr);
 }
 
@@ -344,7 +455,11 @@ export function getUpcomingSpecialDays(
     limit: number = 5
 ): SpecialHours[] {
     const now = new Date();
-    const nowStr = now.toISOString().split('T')[0];
+    // FIX: Timezone safe date string
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const nowStr = `${year}-${month}-${day}`;
 
     return specialHours
         .filter(h => h.date >= nowStr)

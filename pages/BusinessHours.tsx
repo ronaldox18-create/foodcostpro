@@ -99,8 +99,8 @@ const BusinessHoursPage: React.FC = () => {
             // Validar horários
             for (const hours of businessHours) {
                 if (hours.is_open && hours.open_time && hours.close_time) {
-                    if (hours.open_time >= hours.close_time) {
-                        throw new Error(`${getDayName(hours.day_of_week)}: Horário de abertura deve ser antes do fechamento`);
+                    if (hours.open_time === hours.close_time) {
+                        throw new Error(`${getDayName(hours.day_of_week)}: Horário de abertura não pode ser igual ao fechamento`);
                     }
                 }
             }
@@ -203,8 +203,8 @@ const BusinessHoursPage: React.FC = () => {
                                     <button
                                         onClick={() => handleToggleDay(hours.day_of_week)}
                                         className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm transition-colors ${hours.is_open
-                                                ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                            ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                                             }`}
                                     >
                                         {hours.is_open ? (
