@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import {
     Plus, Trash2, Utensils, Clock, DollarSign, LayoutGrid,
     AlertCircle, CheckCircle2, User, Search, RefreshCw, XCircle, ArrowRight
@@ -243,9 +243,11 @@ const Tables: React.FC = () => {
                 </p>
                 <div className="flex flex-col gap-2">
                     <button disabled className="bg-gray-900 text-white px-8 py-4 rounded-xl font-bold opacity-50 cursor-not-allowed shadow-xl">
-                        Disponível no Plano Starter e PRO
+                        Disponível no Plano FoodCost PRO
                     </button>
-                    <p className="text-xs text-gray-400">Faça upgrade em Configurações</p>
+                    <Link to="/account" className="text-xs text-gray-400 hover:text-orange-600 transition-colors underline">
+                        Faça upgrade em Configurações
+                    </Link>
                 </div>
             </div>
         }>

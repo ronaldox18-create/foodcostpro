@@ -142,7 +142,7 @@ export interface User {
   createdAt: string;
 }
 
-export type PlanType = 'free' | 'starter' | 'pro';
+export type PlanType = 'free' | 'starter' | 'online' | 'pro';
 
 import { User as SupabaseUser } from '@supabase/supabase-js';
 

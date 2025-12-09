@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../utils/supabaseClient';
 import type { User } from '@supabase/supabase-js';
 import { AuthContextType, PlanType } from '../types';
+import { PLANS } from '../constants/plans';
 
 type AppUser = User | null;
 
@@ -12,7 +13,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AppUser>(null);
   const [loading, setLoading] = useState(true);
-  const [userPlan, setUserPlan] = useState<PlanType>('free');
+  const [userPlan, setUserPlan] = useState<PlanType>('pro');
 
   useEffect(() => {
     const getSession = async () => {
@@ -33,7 +34,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (session?.user) {
         fetchUserPlan(session.user.id);
       } else {
-        setUserPlan('free');
+        setUserPlan('pro');
       }
     });
 
@@ -51,19 +52,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .single();
 
       if (data && data.plan) {
-        // Validate if plan is valid type, else default free
-        if (['free', 'starter', 'pro'].includes(data.plan)) {
+        if (['starter', 'online', 'pro'].includes(data.plan)) {
           setUserPlan(data.plan as PlanType);
         } else {
-          setUserPlan('free');
+          setUserPlan('pro');
         }
       } else {
-        // If no settings found, could imply new user or error, default free
-        setUserPlan('free');
+        // Default to pro (trial) if no plan settings found
+        setUserPlan('pro');
       }
     } catch (err) {
       console.error('Error fetching plan:', err);
-      setUserPlan('free');
+      setUserPlan('pro');
     }
   };
 
@@ -79,11 +79,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
-    setUserPlan('free');
+    setUserPlan('pro');
   };
 
-  const checkAccess = (feature: keyof typeof import('../constants/plans').PLANS['free']['features']) => {
-    const { PLANS } = require('../constants/plans');
+  const checkAccess = (feature: keyof typeof PLANS['pro']['features']) => {
     const planFeatures = PLANS[userPlan].features;
     return planFeatures[feature];
   };

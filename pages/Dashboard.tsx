@@ -35,7 +35,13 @@ import {
     Sparkles,
     Bell,
     BellRing,
-    Lock
+    Lock,
+    Settings,
+    Plus,
+    Eye,
+    Boxes,
+    Rocket,
+    ChevronRight
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatCurrency } from '../utils/calculations';
@@ -44,6 +50,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import BusinessHoursWidget from '../components/BusinessHoursWidget';
 import { generateForecast } from '../utils/forecast';
 import { FoodCostAIAdvisor } from '../components/FoodCostAIAdvisor';
+import { AIInsightsEngine } from '../components/AIInsightsEngine';
 import PlanGuard from '../components/PlanGuard';
 
 const Dashboard: React.FC = () => {
@@ -79,8 +86,6 @@ const Dashboard: React.FC = () => {
             case 'custom':
                 const s = new Date(customStart);
                 s.setHours(0, 0, 0, 0);
-                // Adicionar fuso horário se necessário, mas input date geralmente é local
-                // Ajustar para garantir que pegamos o dia correto independente do fuso do navegador
                 const sLocal = new Date(s.valueOf() + s.getTimezoneOffset() * 60000);
                 sLocal.setHours(0, 0, 0, 0);
 
@@ -96,12 +101,8 @@ const Dashboard: React.FC = () => {
     };
 
     const compareWithPreviousPeriod = (currentStart: Date, currentEnd: Date) => {
-        // Calcular duração do período atual
         const durationMs = currentEnd.getTime() - currentStart.getTime();
-
-        // Período anterior termina 1ms antes do atual começar
         const previousEnd = new Date(currentStart.getTime() - 1);
-        // Período anterior começa 'duração' antes do seu fim
         const previousStart = new Date(previousEnd.getTime() - durationMs);
 
         let currentRevenue = 0;
@@ -242,28 +243,6 @@ const Dashboard: React.FC = () => {
         };
     }, [orders, settings]);
 
-    // Meta mensal
-    const monthlyGoalProgress = useMemo(() => {
-        const now = new Date();
-        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-
-        const monthOrders = orders.filter(o => {
-            const orderDate = new Date(o.date);
-            return orderDate >= monthStart && orderDate <= now && o.status !== 'canceled';
-        });
-
-        const currentRevenue = monthOrders.reduce((sum, o) => sum + o.totalAmount, 0);
-        const monthlyGoal = settings.estimatedMonthlyBilling || 50000;
-        const progress = Math.min((currentRevenue / monthlyGoal) * 100, 100);
-
-        return {
-            current: currentRevenue,
-            goal: monthlyGoal,
-            progress,
-            remaining: Math.max(0, monthlyGoal - currentRevenue)
-        };
-    }, [orders, settings]);
-
     // Dados semanais para gráfico
     const weeklyChartData = useMemo(() => {
         const today = new Date();
@@ -319,14 +298,6 @@ const Dashboard: React.FC = () => {
             .slice(0, 5);
     }, [periodStats.orders]);
 
-    // Top clientes
-    const topCustomers = useMemo(() => {
-        return [...customers]
-            .filter(c => c.totalSpent > 0)
-            .sort((a, b) => b.totalSpent - a.totalSpent)
-            .slice(0, 5);
-    }, [customers]);
-
     // Análise de horários de pico
     const peakHoursAnalysis = useMemo(() => {
         const hourlyData = Array(24).fill(0).map((_, hour) => ({
@@ -349,67 +320,11 @@ const Dashboard: React.FC = () => {
         }));
     }, [periodStats.orders]);
 
-    // Previsão de Vendas (IA) e Tendências
-    const salesForecast = useMemo(() => {
-        // Pegar últimos 30 dias para basear a tendência
-        const today = new Date();
-        const last30Days = [];
-        for (let i = 29; i >= 0; i--) {
-            const d = new Date(today);
-            d.setDate(d.getDate() - i);
-            d.setHours(0, 0, 0, 0);
-
-            const daysOrders = orders.filter(o => {
-                const od = new Date(o.date);
-                return od >= d && od < new Date(d.getTime() + 86400000) && o.status !== 'canceled';
-            });
-
-            last30Days.push({
-                date: d,
-                value: daysOrders.reduce((sum, o) => sum + o.totalAmount, 0)
-            });
-        }
-
-        // Gerar previsão para próximos 7 dias
-        const { forecast, trend, slope } = generateForecast(last30Days, 7);
-
-        // Formatar dados para o gráfico (combinar histórico recente + forecast)
-        const chartHistory = last30Days.slice(-14).map(d => ({
-            day: d.date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
-            revenue: d.value,
-            forecast: null
-        }));
-
-        const chartForecast = forecast.map(d => ({
-            day: d.date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
-            revenue: null,
-            forecast: d.value
-        }));
-
-        // Conectar visualmente o último ponto real ao primeiro previsto
-        if (chartHistory.length > 0 && chartForecast.length > 0) {
-            const lastReal = chartHistory[chartHistory.length - 1];
-            chartForecast.unshift({
-                day: lastReal.day,
-                revenue: null,
-                forecast: lastReal.revenue
-            });
-        }
-
-        return {
-            data: [...chartHistory, ...chartForecast],
-            trend,
-            slope
-        };
-    }, [orders]);
-
-
-
-    // Análise de horários de pico
+    // Análise de saúde do negócio
     const healthIndicators = useMemo(() => {
         const indicators = [];
 
-        // 1. Margem de Lucro
+        // Margem de Lucro
         if (periodStats.profitMargin < 50) {
             indicators.push({
                 type: 'warning',
@@ -418,17 +333,9 @@ const Dashboard: React.FC = () => {
                 action: 'Revisar Preços',
                 link: '/products'
             });
-        } else if (periodStats.profitMargin >= 70) {
-            indicators.push({
-                type: 'success',
-                title: 'Margem Excelente',
-                description: `Sua margem de ${periodStats.profitMargin.toFixed(1)}% está ótima!`,
-                action: null,
-                link: null
-            });
         }
 
-        // 2. Estoque Baixo
+        // Estoque Baixo
         const lowStock = ingredients.filter(ing =>
             ing.currentStock !== undefined &&
             ing.minStock !== undefined &&
@@ -445,37 +352,11 @@ const Dashboard: React.FC = () => {
             });
         }
 
-        // 3. Clientes Ativos
-        const activeCustomers = customers.filter(c => {
-            if (!c.lastOrderDate) return false;
-            const daysSinceOrder = Math.floor(
-                (new Date().getTime() - new Date(c.lastOrderDate).getTime()) / (1000 * 60 * 60 * 24)
-            );
-            return daysSinceOrder <= 30;
-        });
-
-        const customerRetention = customers.length > 0
-            ? (activeCustomers.length / customers.length) * 100
-            : 0;
-
-        if (customerRetention < 30) {
-            indicators.push({
-                type: 'warning',
-                title: 'Baixa Retenção de Clientes',
-                description: `Apenas ${customerRetention.toFixed(0)}% dos clientes compraram nos últimos 30 dias.`,
-                action: 'Ver Clientes',
-                link: '/customers'
-            });
-        }
-
         return indicators;
-    }, [periodStats, ingredients, customers]);
-
-    const maxWeeklyRevenue = Math.max(...weeklyChartData.map(d => d.revenue), 10);
+    }, [periodStats, ingredients]);
 
     // --- HANDLERS DE EXPORTAÇÃO ---
     const handleExportPDF = () => {
-        // Agrupar vendas por dia para o relatório
         const salesByDate = new Map<string, { date: string, revenue: number, ordersCount: number }>();
 
         periodStats.orders.forEach(order => {
@@ -544,912 +425,488 @@ const Dashboard: React.FC = () => {
         }
     };
 
-    // Monitorar Alertas Críticos para Notificar
-    React.useEffect(() => {
-        if (notificationPermission !== 'granted') return;
-
-        // 1. Estoque Baixo (Health Indicators type 'alert')
-        const criticalAlerts = healthIndicators.filter(i => i.type === 'alert');
-        criticalAlerts.forEach(alert => {
-            const storageKey = `notified-${alert.title}-${new Date().toDateString()}`;
-            if (!localStorage.getItem(storageKey)) {
-                new Notification(alert.title, {
-                    body: alert.description,
-                    tag: 'alert'
-                });
-                localStorage.setItem(storageKey, 'true');
-            }
-        });
-
-        // 2. IA Insights Críticos (ex: Queda de Vendas)
-        if (salesForecast.trend === 'down' && !localStorage.getItem(`notified-trend-down-${new Date().toDateString()}`)) {
-            new Notification('Alerta de Tendência 📉', {
-                body: 'Detectamos uma queda nas vendas. Veja sugestões no Dashboard.',
-                tag: 'trend'
-            });
-            localStorage.setItem(`notified-trend-down-${new Date().toDateString()}`, 'true');
-        }
-
-    }, [healthIndicators, salesForecast, notificationPermission]);
-
     return (
         <div className="space-y-6 animate-fade-in pb-20">
 
-            {/* ========================================================================
-                HEADER COM FILTROS
-                ======================================================================== */}
+            {/* HEADER & CONTROLS */}
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                    <div>
+                        <h1 className="text-2xl font-black text-gray-900 tracking-tight mb-1">
+                            Dashboard
+                        </h1>
+                        <p className="text-sm text-gray-500 font-medium">
+                            Bem-vindo ao <span className="text-orange-600 font-bold">{settings.businessName || 'seu negócio'}</span>
+                        </p>
+                    </div>
 
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-900 tracking-tight flex items-center gap-3">
-                        <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center">
-                            <BarChart3 size={22} className="text-white" />
-                        </div>
-                        Dashboard Gerencial
-                    </h1>
-                    <p className="text-gray-500 mt-1 ml-[52px]">
-                        Acompanhe o desempenho de <span className="font-semibold text-gray-700">{settings.businessName || 'seu negócio'}</span> em tempo real
-                    </p>
-                </div>
-
-                <div className="flex flex-col sm:flex-row items-center gap-3">
-                    {/* Botões de Exportação */}
-                    <PlanGuard feature="financialReports" showLock={false} fallback={
-                        <div className="flex gap-2 opacity-50 cursor-not-allowed items-center" title="Relatórios disponíveis no Plano Pro">
-                            <FileText size={16} className="text-gray-400" />
-                            <FileSpreadsheet size={16} className="text-gray-400" />
-                        </div>
-                    }>
-                        <div className="flex gap-2">
-                            <button
-                                onClick={handleExportPDF}
-                                className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 hover:text-orange-600 hover:border-orange-200 transition-all text-sm font-medium shadow-sm"
-                                title="Exportar Relatório em PDF"
-                            >
-                                <FileText size={16} />
-                                <span className="hidden sm:inline">PDF</span>
-                            </button>
-                            <button
-                                onClick={handleExportCSV}
-                                className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 hover:text-green-600 hover:border-green-200 transition-all text-sm font-medium shadow-sm"
-                                title="Exportar Dados em Excel/CSV"
-                            >
-                                <FileSpreadsheet size={16} />
-                                <span className="hidden sm:inline">Excel</span>
-                            </button>
-                            <button
-                                onClick={requestNotificationPermission}
-                                className={`flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-all text-sm font-medium shadow-sm ${notificationPermission === 'granted' ? 'text-violet-600 border-violet-200' : 'hover:text-violet-600 hover:border-violet-200'}`}
-                                title={notificationPermission === 'granted' ? 'Notificações Ativas' : 'Ativar Notificações'}
-                            >
-                                {notificationPermission === 'granted' ? <BellRing size={16} /> : <Bell size={16} />}
-                                <span className="hidden sm:inline">{notificationPermission === 'granted' ? 'Alertas On' : 'Ativar Alertas'}</span>
-                            </button>
-                        </div>
-                    </PlanGuard>
-
-                    {/* Filtros de Período */}
-                    <div className="flex flex-col items-end gap-2">
-                        <div className="flex gap-2 bg-gray-100 rounded-lg p-1">
-                            {(['today', 'week', 'month', 'custom'] as const).map((range) => (
+                    <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+                        {/* Period Selector */}
+                        <div className="bg-gray-100 p-1 rounded-xl flex">
+                            {(['today', 'week', 'month'] as const).map((range) => (
                                 <button
                                     key={range}
                                     onClick={() => setTimeRange(range)}
-                                    className={`px-4 py-2 rounded-md text-sm font-semibold transition-all ${timeRange === range
-                                        ? 'bg-white text-orange-600 shadow-sm'
-                                        : 'text-gray-600 hover:text-gray-900'
+                                    className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${timeRange === range
+                                        ? 'bg-white text-gray-900 shadow-sm'
+                                        : 'text-gray-500 hover:text-gray-900'
                                         }`}
                                 >
-                                    {range === 'today' ? 'Hoje' : range === 'week' ? '7 Dias' : range === 'month' ? '30 Dias' : 'Personalizado'}
+                                    {range === 'today' ? 'Hoje' : range === 'week' ? '7 Dias' : '30 Dias'}
                                 </button>
                             ))}
                         </div>
 
-                        {timeRange === 'custom' && (
-                            <div className="flex items-center gap-2 bg-white border border-orange-200 rounded-lg p-1 animate-fade-in shadow-sm">
-                                <input
-                                    type="date"
-                                    value={customStart}
-                                    onChange={(e) => setCustomStart(e.target.value)}
-                                    className="text-xs border-none outline-none text-gray-700 font-medium bg-transparent px-2"
-                                />
-                                <span className="text-gray-400 text-xs">até</span>
-                                <input
-                                    type="date"
-                                    value={customEnd}
-                                    onChange={(e) => setCustomEnd(e.target.value)}
-                                    className="text-xs border-none outline-none text-gray-700 font-medium bg-transparent px-2"
-                                />
-                            </div>
-                        )}
+                        {/* Actions */}
+                        <div className="flex gap-2">
+                            <PlanGuard feature="financialReports" showLock={false} fallback={null}>
+                                <button onClick={handleExportPDF} className="p-2.5 bg-white text-gray-700 border border-gray-200 rounded-xl hover:bg-gray-50 hover:border-orange-200 hover:text-orange-600 transition-colors" title="Exportar PDF">
+                                    <FileText size={18} />
+                                </button>
+                                <button onClick={handleExportCSV} className="p-2.5 bg-white text-gray-700 border border-gray-200 rounded-xl hover:bg-gray-50 hover:border-green-200 hover:text-green-600 transition-colors" title="Exportar Excel">
+                                    <FileSpreadsheet size={18} />
+                                </button>
+                            </PlanGuard>
+                            <button
+                                onClick={requestNotificationPermission}
+                                className={`p-2.5 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors ${notificationPermission === 'granted' ? 'text-violet-600 border-violet-100' : 'text-gray-700'}`}
+                                title="Notificações"
+                            >
+                                {notificationPermission === 'granted' ? <BellRing size={18} /> : <Bell size={18} />}
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            {/* ========================================================================
-                INDICADORES DE SAÚDE DO NEGÓCIO
-                ======================================================================== */}
+            {/* HERO SECTION - META DO DIA */}
+            <div className="bg-gradient-to-br from-orange-500 via-orange-600 to-red-600 rounded-2xl p-8 text-white shadow-xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-full h-full bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48cGF0dGVybiBpZD0iZ3JpZCIgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIj48cGF0aCBkPSJNIDQwIDAgTCAwIDAgMCA0MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIwLjUiIG9wYWNpdHk9IjAuMSIvPjwvcGF0dGVybj48L2RlZnM+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0idXJsKCNncmlkKSIvPjwvc3ZnPg==')] opacity-20"></div>
 
-            {
-                healthIndicators.length > 0 && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {healthIndicators.map((indicator, idx) => (
-                            <div
-                                key={idx}
-                                className={`p-4 rounded-xl border-l-4 flex items-start gap-3 ${indicator.type === 'success'
-                                    ? 'bg-green-50 border-green-500'
-                                    : indicator.type === 'warning'
-                                        ? 'bg-yellow-50 border-yellow-500'
-                                        : 'bg-red-50 border-red-500'
-                                    }`}
-                            >
-                                <div className="flex-shrink-0 mt-0.5">
-                                    {indicator.type === 'success' && <CheckCircle2 size={20} className="text-green-600" />}
-                                    {indicator.type === 'warning' && <Info size={20} className="text-yellow-600" />}
-                                    {indicator.type === 'alert' && <AlertTriangle size={20} className="text-red-600" />}
-                                </div>
-                                <div className="flex-1">
-                                    <h4 className={`font-bold text-sm ${indicator.type === 'success' ? 'text-green-900' :
-                                        indicator.type === 'warning' ? 'text-yellow-900' :
-                                            'text-red-900'
-                                        }`}>
-                                        {indicator.title}
-                                    </h4>
-                                    <p className={`text-xs mt-1 ${indicator.type === 'success' ? 'text-green-700' :
-                                        indicator.type === 'warning' ? 'text-yellow-700' :
-                                            'text-red-700'
-                                        }`}>
-                                        {indicator.description}
-                                    </p>
-                                    {indicator.action && indicator.link && (
-                                        <Link
-                                            to={indicator.link}
-                                            className={`text-xs font-semibold mt-2 inline-flex items-center gap-1 hover:underline ${indicator.type === 'success' ? 'text-green-700' :
-                                                indicator.type === 'warning' ? 'text-yellow-700' :
-                                                    'text-red-700'
-                                                }`}
-                                        >
-                                            {indicator.action} <ArrowRight size={12} />
-                                        </Link>
-                                    )}
-                                </div>
+                <div className="relative z-10">
+                    <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+                        <div className="flex-1 space-y-4">
+                            <div className="flex items-center gap-2 text-orange-100 text-xs font-bold uppercase tracking-wider">
+                                <Target size={16} />
+                                Meta de Hoje
                             </div>
-                        ))}
-                    </div>
-                )
-            }
-
-            {/* ========================================================================
-                KPI CARDS PRINCIPAIS
-                ======================================================================== */}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-
-                {/* Faturamento */}
-                <Card className="border-l-4 border-l-green-500">
-                    <CardContent className="pt-6">
-                        <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                                <div className="flex items-center gap-2 text-gray-500 text-sm font-medium mb-2">
-                                    <DollarSign size={16} />
-                                    Faturamento
-                                </div>
-                                <h2 className="text-3xl font-bold text-gray-900 mb-2">
-                                    {formatCurrency(periodStats.revenue)}
-                                </h2>
-                                <div className="flex items-center gap-2">
-                                    {comparison.growth.revenue >= 0 ? (
-                                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-600 bg-green-50 px-2 py-1 rounded-full">
-                                            <TrendingUp size={12} />
-                                            {comparison.growth.revenue.toFixed(1)}%
-                                        </span>
-                                    ) : (
-                                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-red-600 bg-red-50 px-2 py-1 rounded-full">
-                                            <TrendingDown size={12} />
-                                            {Math.abs(comparison.growth.revenue).toFixed(1)}%
-                                        </span>
-                                    )}
-                                    <span className="text-xs text-gray-500">vs período anterior</span>
-                                    {timeRange === 'custom' && (
-                                        <div className="absolute top-full mt-1 bg-gray-800 text-white text-[10px] p-2 rounded opacity-0 group-hover:opacity-100 transition-opacity z-10 whitespace-nowrap pointer-events-none">
-                                            Comparando com: {comparison.previousPeriodLabel}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                            <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                                <DollarSign size={24} className="text-green-600" />
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                {/* Pedidos */}
-                <Card className="border-l-4 border-l-blue-500">
-                    <CardContent className="pt-6">
-                        <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                                <div className="flex items-center gap-2 text-gray-500 text-sm font-medium mb-2">
-                                    <ShoppingBag size={16} />
-                                    Total de Pedidos
-                                </div>
-                                <h2 className="text-3xl font-bold text-gray-900 mb-2">
-                                    {periodStats.ordersCount}
-                                </h2>
-                                <div className="flex items-center gap-2">
-                                    {comparison.growth.orders >= 0 ? (
-                                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-600 bg-green-50 px-2 py-1 rounded-full">
-                                            <TrendingUp size={12} />
-                                            {comparison.growth.orders.toFixed(1)}%
-                                        </span>
-                                    ) : (
-                                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-red-600 bg-red-50 px-2 py-1 rounded-full">
-                                            <TrendingDown size={12} />
-                                            {Math.abs(comparison.growth.orders).toFixed(1)}%
-                                        </span>
-                                    )}
-                                    <span className="text-xs text-gray-500">vs período anterior</span>
-                                </div>
-                            </div>
-                            <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                                <ShoppingBag size={24} className="text-blue-600" />
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                {/* Ticket Médio */}
-                <Card className="border-l-4 border-l-purple-500">
-                    <CardContent className="pt-6">
-                        <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                                <div className="flex items-center gap-2 text-gray-500 text-sm font-medium mb-2">
-                                    <Activity size={16} />
-                                    Ticket Médio
-                                </div>
-                                <h2 className="text-3xl font-bold text-gray-900 mb-2">
-                                    {formatCurrency(periodStats.avgTicket)}
-                                </h2>
-                                <p className="text-xs text-gray-500">
-                                    Média por pedido no período
+                            <div>
+                                <h2 className="text-5xl font-black mb-2">{formatCurrency(todayPerformance.revenue)}</h2>
+                                <p className="text-orange-100 font-medium text-sm">
+                                    {todayPerformance.ordersCount} {todayPerformance.ordersCount === 1 ? 'pedido realizado' : 'pedidos realizados'}
                                 </p>
                             </div>
-                            <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                                <Activity size={24} className="text-purple-600" />
+
+                            <div className="space-y-2">
+                                <div className="w-full bg-white/20 rounded-full h-3 overflow-hidden backdrop-blur-sm">
+                                    <div
+                                        className="h-full bg-white rounded-full transition-all duration-1000 ease-out shadow-lg"
+                                        style={{ width: `${Math.min(todayPerformance.progress, 100)}%` }}
+                                    ></div>
+                                </div>
+                                <p className="text-xs text-orange-100 font-medium">
+                                    {todayPerformance.remaining > 0
+                                        ? `Faltam ${formatCurrency(todayPerformance.remaining)} para atingir ${formatCurrency(todayPerformance.dailyGoal)}`
+                                        : '🎉 Meta do dia atingida! Continue assim!'}
+                                </p>
                             </div>
                         </div>
-                    </CardContent>
-                </Card>
 
-                {/* Margem de Lucro */}
+                        <div className="relative w-32 h-32 flex-shrink-0">
+                            <svg className="w-full h-full transform -rotate-90">
+                                <circle cx="64" cy="64" r="56" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-white/20" />
+                                <circle
+                                    cx="64"
+                                    cy="64"
+                                    r="56"
+                                    stroke="currentColor"
+                                    strokeWidth="6"
+                                    fill="transparent"
+                                    strokeDasharray={352}
+                                    strokeDashoffset={352 - (352 * Math.min(todayPerformance.progress, 100)) / 100}
+                                    className="text-white transition-all duration-1000"
+                                    strokeLinecap="round"
+                                />
+                            </svg>
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                <span className="text-2xl font-black">{Math.round(todayPerformance.progress)}%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* IA ADVISOR - DESTAQUE */}
+            <PlanGuard feature="aiConsultant" showLock={true} fallback={
+                <div className="bg-gradient-to-br from-violet-50 to-indigo-50 rounded-2xl p-8 border-2 border-dashed border-violet-200 text-center">
+                    <Lock className="mx-auto text-violet-300 mb-3" size={32} />
+                    <h3 className="text-lg font-bold text-gray-900 mb-2">🤖 IA Advisor disponível no Plano PRO</h3>
+                    <p className="text-sm text-gray-600 mb-4">
+                        Desbloqueie insights inteligentes em tempo real e recomendações personalizadas para maximizar seus lucros.
+                    </p>
+                    <Link to="/account" className="inline-flex items-center gap-2 bg-violet-600 text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-violet-700 transition-colors">
+                        Fazer Upgrade <ChevronRight size={16} />
+                    </Link>
+                </div>
+            }>
+                <AIInsightsEngine />
+            </PlanGuard>
+
+            {/* KPI METRICS - 4 CARDS */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* Revenue */}
+                <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow group">
+                    <div className="flex items-start justify-between mb-4">
+                        <div className="p-3 bg-emerald-50 rounded-xl group-hover:bg-emerald-100 transition-colors">
+                            <DollarSign className="text-emerald-600" size={24} />
+                        </div>
+                        {comparison.growth.revenue >= 0 ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
+                                <TrendingUp size={12} /> +{comparison.growth.revenue.toFixed(1)}%
+                            </span>
+                        ) : (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded-lg">
+                                <TrendingDown size={12} /> {comparison.growth.revenue.toFixed(1)}%
+                            </span>
+                        )}
+                    </div>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Faturamento</p>
+                    <h3 className="text-2xl font-black text-gray-900">{formatCurrency(periodStats.revenue)}</h3>
+                </div>
+
+                {/* Orders */}
+                <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow group">
+                    <div className="flex items-start justify-between mb-4">
+                        <div className="p-3 bg-blue-50 rounded-xl group-hover:bg-blue-100 transition-colors">
+                            <ShoppingBag className="text-blue-600" size={24} />
+                        </div>
+                        {comparison.growth.orders >= 0 ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">
+                                <TrendingUp size={12} /> +{comparison.growth.orders.toFixed(1)}%
+                            </span>
+                        ) : (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded-lg">
+                                <TrendingDown size={12} /> {comparison.growth.orders.toFixed(1)}%
+                            </span>
+                        )}
+                    </div>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Pedidos</p>
+                    <h3 className="text-2xl font-black text-gray-900">{periodStats.ordersCount}</h3>
+                </div>
+
+                {/* Average Ticket */}
+                <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow group">
+                    <div className="flex items-start justify-between mb-4">
+                        <div className="p-3 bg-purple-50 rounded-xl group-hover:bg-purple-100 transition-colors">
+                            <Calculator className="text-purple-600" size={24} />
+                        </div>
+                    </div>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Ticket Médio</p>
+                    <h3 className="text-2xl font-black text-gray-900">{formatCurrency(periodStats.avgTicket)}</h3>
+                </div>
+
+                {/* Margin */}
                 <PlanGuard feature="financialReports" showLock={true} fallback={
-                    <Card className="border-l-4 border-l-gray-300 opacity-75">
-                        <CardContent className="pt-6 relative overflow-hidden">
-                            <div className="absolute inset-0 flex items-center justify-center bg-gray-100/50 backdrop-blur-[1px] z-10">
-                                <span className="text-xs font-bold text-gray-500 bg-white px-3 py-1 rounded-full shadow-sm flex items-center gap-1">
-                                    <Lock size={12} /> Pro
-                                </span>
-                            </div>
-                            <div className="flex items-start justify-between filter blur-[2px] select-none">
-                                <div className="flex-1">
-                                    <div className="flex items-center gap-2 text-gray-500 text-sm font-medium mb-2">
-                                        <Percent size={16} />
-                                        Margem de Lucro
-                                    </div>
-                                    <h2 className="text-3xl font-bold text-gray-900 mb-2">
-                                        ??%
-                                    </h2>
-                                    <div className="text-xs font-semibold text-gray-400">
-                                        Análise detalhada
-                                    </div>
-                                </div>
-                                <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                                    <Percent size={24} className="text-gray-400" />
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
+                    <div className="bg-gray-50 rounded-2xl p-6 border-2 border-dashed border-gray-200 flex flex-col items-center justify-center">
+                        <Lock className="text-gray-300 mb-2" size={24} />
+                        <p className="text-xs font-bold text-gray-400">Margem (PRO)</p>
+                    </div>
                 }>
-                    <Card className="border-l-4 border-l-orange-500">
-                        <CardContent className="pt-6">
-                            <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                    <div className="flex items-center gap-2 text-gray-500 text-sm font-medium mb-2">
-                                        <Percent size={16} />
-                                        Margem de Lucro
-                                    </div>
-                                    <h2 className="text-3xl font-bold text-gray-900 mb-2">
-                                        {periodStats.profitMargin.toFixed(1)}%
-                                    </h2>
-                                    <div className={`text-xs font-semibold ${periodStats.profitMargin >= 70 ? 'text-green-600' :
-                                        periodStats.profitMargin >= 50 ? 'text-yellow-600' :
-                                            'text-red-600'
-                                        }`}>
-                                        {periodStats.profitMargin >= 70 ? '✓ Excelente' :
-                                            periodStats.profitMargin >= 50 ? '⚠ Aceitável' :
-                                                '⚠ Atenção necessária'}
-                                    </div>
-                                </div>
-                                <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                                    <Percent size={24} className="text-orange-600" />
-                                </div>
+                    <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow group">
+                        <div className="flex items-start justify-between mb-4">
+                            <div className={`p-3 rounded-xl transition-colors ${periodStats.profitMargin >= 60 ? 'bg-green-50 group-hover:bg-green-100' : 'bg-orange-50 group-hover:bg-orange-100'}`}>
+                                <Percent className={periodStats.profitMargin >= 60 ? 'text-green-600' : 'text-orange-600'} size={24} />
                             </div>
-                        </CardContent>
-                    </Card>
+                            <span className={`inline-flex items-center text-xs font-bold px-2 py-1 rounded-lg ${periodStats.profitMargin >= 60 ? 'text-green-600 bg-green-50' : 'text-orange-600 bg-orange-50'}`}>
+                                {periodStats.profitMargin >= 60 ? 'Saudável' : 'Atenção'}
+                            </span>
+                        </div>
+                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Margem de Lucro</p>
+                        <h3 className="text-2xl font-black text-gray-900">{periodStats.profitMargin.toFixed(1)}%</h3>
+                    </div>
                 </PlanGuard>
             </div>
 
-            {/* ========================================================================
-                GRID PRINCIPAL: DESEMPENHO + ANÁLISES
-                ======================================================================== */}
-
+            {/* MAIN CONTENT - 2 COLUMN LAYOUT */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-                {/* Coluna Esquerda (2/3) */}
+                {/* LEFT COLUMN (2/3) */}
                 <div className="lg:col-span-2 space-y-6">
 
-                    {/* Central de Inteligência IA (New Professional Component) */}
-                    <div className="mb-6">
-                        <PlanGuard feature="aiConsultant" showLock={true} fallback={
-                            <Card className="bg-gradient-to-br from-gray-50 to-gray-100 border-gray-200 overflow-hidden relative shadow-sm opacity-80">
-                                <CardContent className="p-8 flex flex-col items-center justify-center text-center space-y-4">
-                                    <div className="w-16 h-16 bg-violet-100 rounded-full flex items-center justify-center mb-2">
-                                        <Brain size={32} className="text-violet-500" />
-                                    </div>
-                                    <h3 className="text-xl font-bold text-gray-900">FoodCost AI Advisor</h3>
-                                    <p className="text-gray-500 max-w-md">
-                                        Obtenha previsões de vendas e insights de engenharia de cardápio com nossa Inteligência Artificial Exclusiva.
-                                    </p>
-                                    <div className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg font-bold text-sm shadow-lg">
-                                        <Lock size={14} /> Disponível no Plano PRO
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        }>
-                            <FoodCostAIAdvisor />
-                        </PlanGuard>
-                    </div>
+                    {/* DRE - DEMONSTRATIVO DE RESULTADOS */}
+                    <PlanGuard feature="financialReports" showLock={true} fallback={
+                        <div className="bg-gray-50 rounded-2xl p-8 border-2 border-dashed border-gray-200 text-center">
+                            <Lock className="text-gray-300 mx-auto mb-3" size={32} />
+                            <p className="text-sm font-bold text-gray-400">Demonstrativo Financeiro disponível no PRO</p>
+                        </div>
+                    }>
+                        <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+                            <h3 className="text-lg font-black text-gray-900 mb-6 flex items-center gap-2">
+                                <BarChart3 className="text-blue-500" size={20} />
+                                Demonstrativo de Resultados
+                            </h3>
 
-                    {/* Performance de Hoje */}
-                    <Card className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white border-0 overflow-hidden">
-                        <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-br from-orange-500/10 to-purple-500/10 rounded-full -mr-48 -mt-48 blur-3xl pointer-events-none"></div>
-
-                        <CardContent className="p-8 relative z-10">
-                            <div className="flex items-center justify-between mb-6">
-                                <div>
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <CalendarCheck size={20} className="text-orange-400" />
-                                        <h3 className="text-lg font-bold">Performance de Hoje</h3>
+                            <div className="space-y-3">
+                                {/* Receita Bruta */}
+                                <div className="flex justify-between items-center p-4 bg-emerald-50 rounded-xl">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
+                                        <span className="font-bold text-sm text-gray-700">Receita Bruta</span>
                                     </div>
-                                    <p className="text-xs text-gray-400">
-                                        {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
-                                    </p>
-                                </div>
-                                <div className="text-right">
-                                    <p className="text-xs text-gray-400">Meta Diária</p>
-                                    <p className="text-xl font-bold">{formatCurrency(todayPerformance.dailyGoal)}</p>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-6 mb-6">
-                                {/* Faturamento de Hoje */}
-                                <div>
-                                    <p className="text-sm text-gray-400 mb-2">Faturamento Hoje</p>
-                                    <h2 className="text-4xl font-bold mb-3 bg-gradient-to-r from-orange-400 to-pink-400 bg-clip-text text-transparent">
-                                        {formatCurrency(todayPerformance.revenue)}
-                                    </h2>
-                                    <div className="w-full bg-white/10 rounded-full h-3 overflow-hidden">
-                                        <div
-                                            className={`h-full rounded-full transition-all duration-1000 ${todayPerformance.progress >= 100
-                                                ? 'bg-gradient-to-r from-green-500 to-emerald-500'
-                                                : 'bg-gradient-to-r from-orange-500 to-orange-600'
-                                                }`}
-                                            style={{ width: `${todayPerformance.progress}%` }}
-                                        />
-                                    </div>
-                                    <p className="text-xs text-gray-400 mt-2">
-                                        {todayPerformance.progress.toFixed(0)}% da meta
-                                        {todayPerformance.remaining > 0 ? (
-                                            <> • Faltam {formatCurrency(todayPerformance.remaining)}</>
-                                        ) : (
-                                            <> • <span className="text-green-400 font-semibold">Meta atingida!</span></>
-                                        )}
-                                    </p>
+                                    <span className="font-black text-emerald-700">{formatCurrency(periodStats.revenue)}</span>
                                 </div>
 
-                                {/* Pedidos de Hoje */}
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="bg-white/5 rounded-xl p-4 border border-white/10">
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <ShoppingBag size={16} className="text-blue-400" />
-                                            <p className="text-xs text-gray-400">Pedidos</p>
-                                        </div>
-                                        <p className="text-2xl font-bold">{todayPerformance.ordersCount}</p>
+                                {/* Custo (CMV) */}
+                                <div className="flex justify-between items-center p-4 bg-red-50 rounded-xl">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                                        <span className="font-bold text-sm text-gray-700">(-) Custo dos Produtos (CMV)</span>
                                     </div>
-                                    <div className="bg-white/5 rounded-xl p-4 border border-white/10">
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <Calculator size={16} className="text-purple-400" />
-                                            <p className="text-xs text-gray-400">Ticket Médio</p>
-                                        </div>
-                                        <p className="text-2xl font-bold">
-                                            {formatCurrency(todayPerformance.ordersCount > 0 ? todayPerformance.revenue / todayPerformance.ordersCount : 0)}
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Status da Meta */}
-                            {todayPerformance.progress >= 100 ? (
-                                <div className="bg-green-500/20 border border-green-500/30 rounded-xl p-4 flex items-center gap-3">
-                                    <Award size={24} className="text-green-400 flex-shrink-0" />
-                                    <div>
-                                        <p className="font-bold text-green-100 text-sm">🎉 Meta do Dia Atingida!</p>
-                                        <p className="text-xs text-green-300 mt-1">
-                                            Parabéns! Você superou a meta em {formatCurrency(todayPerformance.revenue - todayPerformance.dailyGoal)}
-                                        </p>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="bg-orange-500/20 border border-orange-500/30 rounded-xl p-4 flex items-center gap-3">
-                                    <Target size={24} className="text-orange-400 flex-shrink-0" />
-                                    <div>
-                                        <p className="font-bold text-orange-100 text-sm">Continue vendendo!</p>
-                                        <p className="text-xs text-orange-300 mt-1">
-                                            Ainda faltam {formatCurrency(todayPerformance.remaining)} para atingir a meta de hoje
-                                        </p>
-                                    </div>
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
-
-                    {/* Gráfico Semanal */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <TrendingUp size={20} className="text-orange-600" />
-                                Vendas dos Últimos 7 Dias
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="h-64 w-full">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={weeklyChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                                        <XAxis
-                                            dataKey="day"
-                                            axisLine={false}
-                                            tickLine={false}
-                                            tick={{ fill: '#6B7280', fontSize: 12 }}
-                                            dy={10}
-                                        />
-                                        <YAxis
-                                            axisLine={false}
-                                            tickLine={false}
-                                            tick={{ fill: '#6B7280', fontSize: 11 }}
-                                            tickFormatter={(value) => `R$${value}`}
-                                        />
-                                        <RechartsTooltip
-                                            cursor={{ fill: '#F3F4F6' }}
-                                            content={({ active, payload, label }) => {
-                                                if (active && payload && payload.length) {
-                                                    return (
-                                                        <div className="bg-white p-3 border border-gray-100 rounded-xl shadow-xl">
-                                                            <p className="font-bold text-gray-900 mb-1">{label}</p>
-                                                            <p className="text-sm font-bold text-orange-600">
-                                                                {formatCurrency(payload[0].value as number)}
-                                                            </p>
-                                                            <p className="text-xs text-gray-500 mt-1">
-                                                                {payload[0].payload.ordersCount} pedidos
-                                                            </p>
-                                                        </div>
-                                                    );
-                                                }
-                                                return null;
-                                            }}
-                                        />
-                                        <Bar
-                                            dataKey="revenue"
-                                            fill="#F97316"
-                                            radius={[6, 6, 0, 0]}
-                                            barSize={40}
-                                        />
-                                    </BarChart>
-                                </ResponsiveContainer>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    {/* Análise Financeira Detalhada */}
-                    <Card className="border-l-4 border-l-indigo-500">
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2 text-indigo-900">
-                                <PieChart size={20} className="text-indigo-600" />
-                                Análise Financeira Detalhada
-                            </CardTitle>
-                            <p className="text-sm text-gray-500 mt-2">
-                                Compreenda para onde vai cada real do seu faturamento
-                            </p>
-                        </CardHeader>
-                        <CardContent>
-                            {/* Resumo Visual */}
-                            <div className="bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl p-5 mb-6 border border-indigo-100">
-                                <div className="flex items-center justify-between mb-4">
-                                    <div>
-                                        <p className="text-sm text-gray-600 mb-1">Total Vendido no Período</p>
-                                        <h3 className="text-2xl font-bold text-gray-900">{formatCurrency(periodStats.revenue)}</h3>
-                                    </div>
+                                    <span className="font-black text-red-700">-{formatCurrency(periodStats.totalCost)}</span>
                                 </div>
 
-                                {/* Barra Dividida */}
-                                <div className="relative h-16 rounded-xl overflow-hidden flex shadow-md mb-4">
-                                    {/* Custo */}
-                                    <div
-                                        style={{ width: `${100 - periodStats.profitMargin}%` }}
-                                        className="bg-gradient-to-r from-red-500 to-red-600 flex items-center justify-center relative group cursor-pointer"
-                                    >
-                                        <span className="text-white font-bold text-sm drop-shadow-md">
-                                            {formatCurrency(periodStats.totalCost)}
-                                        </span>
-                                        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs py-1.5 px-3 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 shadow-xl pointer-events-none">
-                                            Custo dos Ingredientes
-                                        </div>
+                                {/* Lucro Bruto */}
+                                <div className="flex justify-between items-center p-4 bg-blue-50 rounded-xl border-2 border-blue-200">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                        <span className="font-bold text-sm text-gray-900">(=) Lucro Bruto</span>
                                     </div>
-
-                                    {/* Lucro */}
-                                    <div
-                                        style={{ width: `${periodStats.profitMargin}%` }}
-                                        className="bg-gradient-to-r from-green-500 to-emerald-600 flex items-center justify-center relative group cursor-pointer"
-                                    >
-                                        <span className="text-white font-bold text-sm drop-shadow-md">
-                                            {formatCurrency(periodStats.profit)}
-                                        </span>
-                                        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs py-1.5 px-3 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 shadow-xl pointer-events-none">
-                                            Margem Bruta (Lucro)
-                                        </div>
-                                    </div>
+                                    <span className="font-black text-blue-700">{formatCurrency(periodStats.profit)}</span>
                                 </div>
 
-                                {/* Detalhamento */}
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="bg-white rounded-lg p-4 border border-red-100">
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                                            <span className="text-xs font-semibold text-red-700 uppercase">Custos (CMV)</span>
-                                        </div>
-                                        <p className="text-2xl font-bold text-red-600 mb-1">
-                                            {formatCurrency(periodStats.totalCost)}
-                                        </p>
-                                        <p className="text-xs text-gray-600 font-semibold">
-                                            {(100 - periodStats.profitMargin).toFixed(1)}% do faturamento
-                                        </p>
+                                {/* Impostos e Taxas */}
+                                <div className="flex justify-between items-center p-4 bg-orange-50 rounded-xl">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+                                        <span className="font-bold text-sm text-gray-700">(-) Impostos ({periodStats.taxPercent}%)</span>
                                     </div>
-
-                                    <div className="bg-white rounded-lg p-4 border border-green-100">
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                                            <span className="text-xs font-semibold text-green-700 uppercase">Lucro Bruto</span>
-                                        </div>
-                                        <p className="text-2xl font-bold text-green-600 mb-1">
-                                            {formatCurrency(periodStats.profit)}
-                                        </p>
-                                        <p className="text-xs text-gray-600 font-semibold">
-                                            {periodStats.profitMargin.toFixed(1)}% do faturamento
-                                        </p>
-                                    </div>
+                                    <span className="font-black text-orange-700">-{formatCurrency(periodStats.calculatedTaxes)}</span>
                                 </div>
-                            </div>
 
-                            {/* Seção de Lucro Líquido Estimado */}
-                            <div className="mt-8 pt-6 border-t border-gray-100">
-                                <h4 className="font-bold text-gray-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-wide">
-                                    <Calculator className="w-4 h-4 text-blue-600" />
-                                    Estimativa de Resultado Líquido
-                                </h4>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="space-y-3 text-sm">
-                                        <div className="flex justify-between items-center p-2 bg-gray-50 rounded-lg">
-                                            <span className="text-gray-600 flex items-center gap-2">
-                                                <div className="w-2 h-2 bg-red-400 rounded-full"></div>
-                                                Impostos e Taxas ({periodStats.taxPercent}%)
-                                            </span>
-                                            <span className="text-red-600 font-medium">- {formatCurrency(periodStats.calculatedTaxes)}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center p-2 bg-gray-50 rounded-lg">
-                                            <span className="text-gray-600 flex items-center gap-2">
-                                                <div className="w-2 h-2 bg-red-400 rounded-full"></div>
-                                                Custos Fixos (Estimado)
-                                            </span>
-                                            <span className="text-red-600 font-medium">- {formatCurrency(periodStats.calculatedFixedCosts)}</span>
-                                        </div>
-                                        <p className="text-[10px] text-gray-400 italic px-2">
-                                            *Custos fixos calculados proporcionalmente ao período ({periodStats.daysInPeriod} {periodStats.daysInPeriod === 1 ? 'dia' : 'dias'}).
-                                        </p>
+                                {/* Custos Fixos */}
+                                <div className="flex justify-between items-center p-4 bg-purple-50 rounded-xl">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                                        <span className="font-bold text-sm text-gray-700">(-) Custos Fixos (prop.)</span>
                                     </div>
+                                    <span className="font-black text-purple-700">-{formatCurrency(periodStats.calculatedFixedCosts)}</span>
+                                </div>
 
-                                    <div className={`rounded-xl p-4 flex flex-col justify-center items-center text-center border-2 ${periodStats.netProfit >= 0
-                                        ? 'bg-blue-50 border-blue-100'
-                                        : 'bg-red-50 border-red-100'
-                                        }`}>
-                                        <span className={`text-xs font-bold uppercase tracking-wide mb-1 ${periodStats.netProfit >= 0 ? 'text-blue-600' : 'text-red-600'
-                                            }`}>
-                                            Lucro Líquido Estimado
-                                        </span>
-                                        <span className={`text-2xl font-black ${periodStats.netProfit >= 0 ? 'text-blue-700' : 'text-red-600'
-                                            }`}>
+                                {/* Lucro Líquido */}
+                                <div className="flex justify-between items-center p-4 bg-gradient-to-r from-gray-900 to-gray-800 rounded-xl border-2 border-gray-700 mt-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
+                                        <span className="font-black text-sm text-white">(=) Lucro Líquido Estimado</span>
+                                    </div>
+                                    <div className="text-right">
+                                        <span className={`font-black text-lg ${periodStats.netProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                                             {formatCurrency(periodStats.netProfit)}
                                         </span>
-                                        <div className={`mt-2 px-3 py-1 rounded-full text-xs font-bold ${periodStats.netProfit >= 0 ? 'bg-blue-200 text-blue-800' : 'bg-red-200 text-red-800'
-                                            }`}>
-                                            {periodStats.netMargin.toFixed(1)}% margem líquida
-                                        </div>
+                                        <p className="text-xs text-gray-400 mt-1">{periodStats.netMargin.toFixed(1)}% da receita</p>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Dica Inteligente */}
-                            <div className={`p-4 rounded-xl border-l-4 ${periodStats.profitMargin >= 70
-                                ? 'bg-green-50 border-green-500'
-                                : periodStats.profitMargin >= 50
-                                    ? 'bg-yellow-50 border-yellow-500'
-                                    : 'bg-red-50 border-red-500'
-                                }`}>
-                                <div className="flex gap-3">
-                                    <Info size={18} className={`flex-shrink-0 mt-0.5 ${periodStats.profitMargin >= 70 ? 'text-green-600' :
-                                        periodStats.profitMargin >= 50 ? 'text-yellow-600' :
-                                            'text-red-600'
-                                        }`} />
-                                    <div>
-                                        <p className={`font-bold text-sm ${periodStats.profitMargin >= 70 ? 'text-green-900' :
-                                            periodStats.profitMargin >= 50 ? 'text-yellow-900' :
-                                                'text-red-900'
-                                            }`}>
-                                            {periodStats.profitMargin >= 70
-                                                ? '✅ Excelente Margem de Lucro!'
-                                                : periodStats.profitMargin >= 50
-                                                    ? '⚠️ Margem Aceitável'
-                                                    : '❌ Margem Baixa - Ação Necessária'}
-                                        </p>
-                                        <p className={`text-xs mt-1 leading-relaxed ${periodStats.profitMargin >= 70 ? 'text-green-700' :
-                                            periodStats.profitMargin >= 50 ? 'text-yellow-700' :
-                                                'text-red-700'
-                                            }`}>
-                                            {periodStats.profitMargin >= 70
-                                                ? 'Sua margem está excelente! Continue monitorando os custos e mantenha essa performance.'
-                                                : periodStats.profitMargin >= 50
-                                                    ? 'Sua margem está razoável, mas há espaço para melhoria. Considere revisar preços ou otimizar receitas.'
-                                                    : 'Sua margem está muito baixa. É urgente revisar preços, reduzir porções ou negociar com fornecedores.'}
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
+                            <p className="text-xs text-gray-400 mt-4 text-center italic">
+                                * Custos fixos proporcionais a {periodStats.daysInPeriod} {periodStats.daysInPeriod === 1 ? 'dia' : 'dias'}
+                            </p>
+                        </div>
+                    </PlanGuard>
+
+                    {/* GRÁFICO DE DESEMPENHO SEMANAL */}
+                    <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+                        <div className="flex items-center justify-between mb-6">
+                            <h3 className="text-lg font-black text-gray-900 flex items-center gap-2">
+                                <Activity className="text-orange-500" size={20} />
+                                Desempenho Últimos 7 Dias
+                            </h3>
+                            <Link to="/all-orders" className="text-xs font-bold text-orange-600 hover:text-orange-700 flex items-center gap-1">
+                                Ver Todos <ChevronRight size={14} />
+                            </Link>
+                        </div>
+                        <div className="h-72 w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <AreaChart data={weeklyChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                    <defs>
+                                        <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#F97316" stopOpacity={0.2} />
+                                            <stop offset="95%" stopColor="#F97316" stopOpacity={0} />
+                                        </linearGradient>
+                                    </defs>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3F4F6" />
+                                    <XAxis
+                                        dataKey="day"
+                                        axisLine={false}
+                                        tickLine={false}
+                                        tick={{ fill: '#9CA3AF', fontSize: 12, fontWeight: 600 }}
+                                        dy={10}
+                                    />
+                                    <YAxis
+                                        axisLine={false}
+                                        tickLine={false}
+                                        tick={{ fill: '#9CA3AF', fontSize: 12 }}
+                                        tickFormatter={(value) => `R$${value}`}
+                                    />
+                                    <RechartsTooltip
+                                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
+                                        cursor={{ stroke: '#F97316', strokeWidth: 2, strokeDasharray: '4 4' }}
+                                    />
+                                    <Area
+                                        type="monotone"
+                                        dataKey="revenue"
+                                        stroke="#F97316"
+                                        strokeWidth={3}
+                                        fillOpacity={1}
+                                        fill="url(#colorRevenue)"
+                                    />
+                                </AreaChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
 
                 </div>
 
-                {/* Coluna Direita (1/3) */}
+                {/* RIGHT COLUMN (1/3) - SIDEBAR */}
                 <div className="space-y-6">
 
-                    {/* Meta Mensal */}
-                    <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white border-0">
-                        <CardContent className="p-6">
-                            <div className="flex items-center gap-2 mb-4">
-                                <Target size={20} />
-                                <h3 className="font-bold">Meta Mensal</h3>
-                            </div>
-
-                            <div className="mb-4">
-                                <p className="text-3xl font-bold mb-1">{formatCurrency(monthlyGoalProgress.current)}</p>
-                                <p className="text-sm text-orange-100">de {formatCurrency(monthlyGoalProgress.goal)}</p>
-                            </div>
-
-                            <div className="w-full bg-white/20 rounded-full h-3 overflow-hidden mb-2">
+                    {/* ALERTAS CRÍTICOS */}
+                    {healthIndicators.length > 0 && (
+                        <div className="space-y-3">
+                            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1">Alertas</h3>
+                            {healthIndicators.slice(0, 2).map((indicator, idx) => (
                                 <div
-                                    className="h-full bg-white rounded-full transition-all duration-1000"
-                                    style={{ width: `${monthlyGoalProgress.progress}%` }}
-                                />
-                            </div>
+                                    key={idx}
+                                    className={`p-4 rounded-xl border-l-4 ${indicator.type === 'alert' ? 'bg-red-50 border-red-500' :
+                                            indicator.type === 'warning' ? 'bg-yellow-50 border-yellow-500' :
+                                                'bg-green-50 border-green-500'
+                                        }`}
+                                >
+                                    <div className="flex gap-3">
+                                        <div className="flex-shrink-0 pt-0.5">
+                                            {indicator.type === 'alert' ? <AlertTriangle size={16} className="text-red-600" /> :
+                                                indicator.type === 'warning' ? <Info size={16} className="text-yellow-600" /> :
+                                                    <CheckCircle2 size={16} className="text-green-600" />}
+                                        </div>
+                                        <div className="flex-1">
+                                            <h4 className="font-bold text-sm text-gray-900 mb-1">{indicator.title}</h4>
+                                            <p className="text-xs text-gray-600">{indicator.description}</p>
+                                            {indicator.link && (
+                                                <Link
+                                                    to={indicator.link}
+                                                    className="text-xs font-bold mt-2 inline-flex items-center gap-1 text-gray-700 hover:text-gray-900"
+                                                >
+                                                    {indicator.action} <ChevronRight size={12} />
+                                                </Link>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
 
-                            <div className="flex items-center justify-between text-sm">
-                                <span className="font-semibold">{monthlyGoalProgress.progress.toFixed(0)}% concluído</span>
-                                {monthlyGoalProgress.remaining > 0 && (
-                                    <span className="text-orange-100">Faltam {formatCurrency(monthlyGoalProgress.remaining)}</span>
-                                )}
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    {/* Top Produtos */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Award size={18} className="text-yellow-600" />
+                    {/* TOP PRODUTOS */}
+                    <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="font-bold text-sm text-gray-900 flex items-center gap-2">
+                                <Award className="text-yellow-500" size={18} />
                                 Top Produtos
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            {topProducts.length > 0 ? (
-                                <div className="space-y-3">
-                                    {topProducts.map((product, idx) => (
-                                        <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                                            <div className="flex items-center gap-3">
-                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${idx === 0 ? 'bg-yellow-100 text-yellow-700' :
-                                                    idx === 1 ? 'bg-gray-200 text-gray-700' :
-                                                        idx === 2 ? 'bg-orange-100 text-orange-700' :
-                                                            'bg-gray-100 text-gray-600'
-                                                    }`}>
-                                                    {idx + 1}º
-                                                </div>
-                                                <div>
-                                                    <p className="font-semibold text-sm text-gray-900">{product.name}</p>
-                                                    <p className="text-xs text-gray-500">{product.quantity} vendidos</p>
-                                                </div>
-                                            </div>
-                                            <p className="font-bold text-sm text-gray-900">{formatCurrency(product.revenue)}</p>
+                            </h3>
+                        </div>
+                        <div className="space-y-2">
+                            {topProducts.slice(0, 5).map((p, i) => (
+                                <div key={i} className="flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg transition-colors">
+                                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                                        <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${i === 0 ? 'bg-yellow-100 text-yellow-700' :
+                                                i === 1 ? 'bg-gray-100 text-gray-600' :
+                                                    i === 2 ? 'bg-orange-50 text-orange-600' : 'bg-gray-50 text-gray-400'
+                                            }`}>
+                                            {i + 1}
+                                        </span>
+                                        <div className="min-w-0 flex-1">
+                                            <p className="font-bold text-xs text-gray-800 truncate">{p.name}</p>
+                                            <p className="text-[10px] text-gray-400">{p.quantity} vendidos</p>
                                         </div>
-                                    ))}
+                                    </div>
+                                    <span className="font-bold text-xs text-gray-900 flex-shrink-0">{formatCurrency(p.revenue)}</span>
                                 </div>
-                            ) : (
-                                <p className="text-center text-gray-400 text-sm py-6">Nenhuma venda no período</p>
+                            ))}
+                            {topProducts.length === 0 && (
+                                <p className="text-center text-gray-400 text-xs py-4">Sem vendas no período</p>
                             )}
-                        </CardContent>
-                    </Card>
+                        </div>
+                    </div>
 
-                    {/* Top Clientes */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Crown size={18} className="text-purple-600" />
-                                Top Clientes VIP
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            {topCustomers.length > 0 ? (
-                                <div className="space-y-3">
-                                    {topCustomers.map((customer, idx) => (
-                                        <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                                            <div className="flex items-center gap-3 flex-1 min-w-0">
-                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${idx === 0 ? 'bg-purple-100 text-purple-700' :
-                                                    'bg-gray-100 text-gray-600'
-                                                    }`}>
-                                                    {idx + 1}º
-                                                </div>
-                                                <div className="min-w-0 flex-1">
-                                                    <p className="font-semibold text-sm text-gray-900 truncate">{customer.name}</p>
-                                                    <p className="text-xs text-gray-500">
-                                                        {customer.lastOrderDate
-                                                            ? `Última compra: ${new Date(customer.lastOrderDate).toLocaleDateString('pt-BR')}`
-                                                            : 'Sem pedidos'}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                            <p className="font-bold text-sm text-gray-900 ml-2 flex-shrink-0">{formatCurrency(customer.totalSpent)}</p>
-                                        </div>
-                                    ))}
-                                </div>
+                    {/* HORÁRIOS DE PICO */}
+                    <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+                        <h3 className="font-bold text-sm text-gray-900 flex items-center gap-2 mb-4">
+                            <Clock className="text-blue-500" size={18} />
+                            Horários de Pico
+                        </h3>
+                        <div className="h-24 w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <AreaChart data={peakHoursAnalysis}>
+                                    <defs>
+                                        <linearGradient id="miniChartPeak" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
+                                            <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
+                                        </linearGradient>
+                                    </defs>
+                                    <Area type="monotone" dataKey="revenue" stroke="#3B82F6" strokeWidth={2} fill="url(#miniChartPeak)" />
+                                </AreaChart>
+                            </ResponsiveContainer>
+                        </div>
+                        {(() => {
+                            const peak = peakHoursAnalysis.reduce((max, h) => h.revenue > max.revenue ? h : max, peakHoursAnalysis[0]);
+                            return peak.revenue > 0 ? (
+                                <p className="text-center text-xs font-medium text-gray-600 mt-2">
+                                    Pico às <span className="text-blue-600 font-bold">{peak.hour}h</span> com {formatCurrency(peak.revenue)}
+                                </p>
                             ) : (
-                                <p className="text-center text-gray-400 text-sm py-6">Nenhum cliente cadastrado</p>
-                            )}
-                        </CardContent>
-                    </Card>
+                                <p className="text-center text-xs text-gray-400 mt-2">Sem dados no período</p>
+                            );
+                        })()}
+                    </div>
 
-                    {/* Horários de Pico */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Clock size={18} className="text-blue-600" />
-                                Horários de Pico
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="h-24 w-full mb-4">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <AreaChart data={peakHoursAnalysis}>
-                                        <defs>
-                                            <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
-                                                <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
-                                            </linearGradient>
-                                        </defs>
-                                        <RechartsTooltip
-                                            content={({ active, payload, label }) => {
-                                                if (active && payload && payload.length) {
-                                                    return (
-                                                        <div className="bg-white p-2 border border-blue-100 rounded-lg shadow-lg text-xs">
-                                                            <p className="font-bold text-gray-900">{payload[0].payload.hour}h</p>
-                                                            <p className="text-blue-600 font-semibold">{formatCurrency(payload[0].value as number)}</p>
-                                                            <p className="text-gray-500">{payload[0].payload.ordersCount} pedidos</p>
-                                                        </div>
-                                                    );
-                                                }
-                                                return null;
-                                            }}
-                                        />
-                                        <Area
-                                            type="monotone"
-                                            dataKey="revenue"
-                                            stroke="#3B82F6"
-                                            strokeWidth={2}
-                                            fillOpacity={1}
-                                            fill="url(#colorRevenue)"
-                                        />
-                                    </AreaChart>
-                                </ResponsiveContainer>
-                            </div>
-                            <p className="text-xs text-gray-500 text-center">
-                                Intensidade de vendas por hora (0h - 23h)
-                            </p>
-
-                            {/* Horário de maior movimento */}
-                            {(() => {
-                                const peakHour = peakHoursAnalysis.reduce((max, h) => h.revenue > max.revenue ? h : max, peakHoursAnalysis[0]);
-                                if (peakHour.revenue > 0) {
-                                    return (
-                                        <div className="mt-4 p-3 bg-orange-50 rounded-lg border border-orange-100">
-                                            <p className="text-xs text-orange-800 font-semibold">
-                                                🔥 Pico de vendas: <span className="font-bold">{peakHour.hour}h</span> ({formatCurrency(peakHour.revenue)} em {peakHour.ordersCount} pedidos)
-                                            </p>
-                                        </div>
-                                    );
-                                }
-                                return null;
-                            })()}
-                        </CardContent>
-                    </Card>
-
-                    {/* Widget de Horários */}
-                    <BusinessHoursWidget />
+                    {/* QUICK ACTIONS */}
+                    <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+                        <h3 className="font-bold text-sm text-gray-900 mb-4">Ações Rápidas</h3>
+                        <div className="grid grid-cols-2 gap-2">
+                            <Link
+                                to="/pos"
+                                className="p-3 bg-orange-50 border border-orange-100 rounded-xl flex flex-col items-center justify-center gap-2 hover:bg-orange-100 transition-all group"
+                            >
+                                <Plus size={20} className="text-orange-600 group-hover:scale-110 transition-transform" />
+                                <span className="text-xs font-bold text-orange-700">Nova Venda</span>
+                            </Link>
+                            <Link
+                                to="/products"
+                                className="p-3 bg-blue-50 border border-blue-100 rounded-xl flex flex-col items-center justify-center gap-2 hover:bg-blue-100 transition-all group"
+                            >
+                                <Package size={20} className="text-blue-600 group-hover:scale-110 transition-transform" />
+                                <span className="text-xs font-bold text-blue-700">Produtos</span>
+                            </Link>
+                            <Link
+                                to="/inventory"
+                                className="p-3 bg-purple-50 border border-purple-100 rounded-xl flex flex-col items-center justify-center gap-2 hover:bg-purple-100 transition-all group"
+                            >
+                                <Boxes size={20} className="text-purple-600 group-hover:scale-110 transition-transform" />
+                                <span className="text-xs font-bold text-purple-700">Estoque</span>
+                            </Link>
+                            <Link
+                                to="/all-orders"
+                                className="p-3 bg-green-50 border border-green-100 rounded-xl flex flex-col items-center justify-center gap-2 hover:bg-green-100 transition-all group"
+                            >
+                                <Eye size={20} className="text-green-600 group-hover:scale-110 transition-transform" />
+                                <span className="text-xs font-bold text-green-700">Ver Pedidos</span>
+                            </Link>
+                        </div>
+                    </div>
 
                 </div>
+
             </div>
-
-            {/* ========================================================================
-                AÇÕES RÁPIDAS
-                ======================================================================== */}
-
-            <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-100">
-                <CardContent className="p-6">
-                    <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-                        <Zap size={20} className="text-indigo-600" />
-                        Ações Rápidas
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        <Link to="/orders" className="p-4 bg-white rounded-lg border border-indigo-100 hover:shadow-md transition-all flex items-center gap-3 group">
-                            <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform">
-                                <ShoppingBag size={20} className="text-green-600" />
-                            </div>
-                            <div>
-                                <p className="font-semibold text-sm text-gray-900">Novo Pedido</p>
-                                <p className="text-xs text-gray-500">Criar venda rápida</p>
-                            </div>
-                        </Link>
-
-                        <Link to="/products" className="p-4 bg-white rounded-lg border border-indigo-100 hover:shadow-md transition-all flex items-center gap-3 group">
-                            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform">
-                                <Package size={20} className="text-blue-600" />
-                            </div>
-                            <div>
-                                <p className="font-semibold text-sm text-gray-900">Produtos</p>
-                                <p className="text-xs text-gray-500">Gerenciar cardápio</p>
-                            </div>
-                        </Link>
-
-                        <Link to="/advisor" className="p-4 bg-white rounded-lg border border-indigo-100 hover:shadow-md transition-all flex items-center gap-3 group">
-                            <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform">
-                                <Zap size={20} className="text-purple-600" />
-                            </div>
-                            <div>
-                                <p className="font-semibold text-sm text-gray-900">Consultar IA</p>
-                                <p className="text-xs text-gray-500">Obter insights</p>
-                            </div>
-                        </Link>
-                    </div>
-                </CardContent>
-            </Card>
-
-        </div >
+        </div>
     );
 };
 

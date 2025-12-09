@@ -12,6 +12,7 @@
   "dependencies": {
     "@google/genai": "*",
     "@google/generative-ai": "^0.24.1",
+    "@stripe/stripe-js": "^8.5.3",
     "@supabase/supabase-js": "^2.86.0",
     "@tailwindcss/postcss": "^4.1.17",
     "autoprefixer": "^10.4.22",

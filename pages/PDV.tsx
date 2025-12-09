@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useAuth } from '../contexts/AuthContext';
+import { Link } from 'react-router-dom';
+import PlanGuard from '../components/PlanGuard';
 import {
     ShoppingCart, Search, User, DollarSign, Receipt,
     Clock, TrendingUp, Package, X, Plus, Minus,
     Calculator, AlertCircle, Award, Settings, ChevronRight,
-    Zap, CreditCard, Sparkles, ShoppingBag, Users, BarChart3, Printer, ChefHat
+    Zap, CreditCard, Sparkles, ShoppingBag, Users, BarChart3, Printer, ChefHat, Lock
 } from 'lucide-react';
 import { OrderItem, Customer, Product, CashRegister, POSPayment, Order } from '../types';
 import POSPaymentModal from '../components/POSPaymentModal';
@@ -16,7 +18,7 @@ import { supabase } from '../utils/supabaseClient';
 
 const PDV: React.FC = () => {
     const { products, customers, addOrder, handleStockUpdate, checkStockAvailability } = useApp();
-    const { user } = useAuth();
+    const { user, checkAccess } = useAuth();
 
     // Estados principais
     const [cart, setCart] = useState<OrderItem[]>([]);
@@ -263,6 +265,29 @@ const PDV: React.FC = () => {
         setLastOrder(null);
         setShowSuccessModal(false);
     };
+
+    // VERIFICAR ACESSO AO PLANO ANTES DO CAIXA
+    if (!checkAccess('pdv')) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-8 space-y-6 max-w-2xl mx-auto animate-fade-in">
+                <div className="w-24 h-24 bg-orange-100 rounded-full flex items-center justify-center animate-pulse">
+                    <CreditCard size={48} className="text-orange-600" />
+                </div>
+                <h2 className="text-3xl font-black text-gray-900">Frente de Caixa (PDV)</h2>
+                <p className="text-lg text-gray-500">
+                    Agilize suas vendas de balcão. Um sistema completo de caixa, controle de estoque em tempo real e emissão de comprovantes.
+                </p>
+                <div className="flex flex-col gap-2">
+                    <button disabled className="bg-gray-900 text-white px-8 py-4 rounded-xl font-bold opacity-50 cursor-not-allowed shadow-xl">
+                        Disponível no Plano FoodCost PRO
+                    </button>
+                    <Link to="/account" className="text-xs text-gray-400 hover:text-orange-600 transition-colors underline">
+                        Faça upgrade em Configurações
+                    </Link>
+                </div>
+            </div>
+        );
+    }
 
     // Se não houver caixa aberto
     if (!currentCashRegister) {

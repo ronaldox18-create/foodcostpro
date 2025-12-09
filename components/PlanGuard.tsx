@@ -4,7 +4,7 @@ import { Lock } from 'lucide-react';
 import { PLANS } from '../constants/plans';
 
 interface PlanGuardProps {
-    feature: keyof typeof PLANS['free']['features'];
+    feature: keyof typeof PLANS['pro']['features'];
     children: React.ReactNode;
     fallback?: React.ReactNode; // Optional custom fallback
     showLock?: boolean; // Show lock icon wrapper if denied?

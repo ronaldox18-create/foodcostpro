@@ -12,6 +12,8 @@ export interface PlanFeatures {
         loyaltySystem: boolean;
         whatsappIntegration: boolean;
         supportPriority: boolean;
+        pdv: boolean;
+        digitalMenu: boolean;
     };
 }
 
@@ -20,14 +22,16 @@ export const PLANS: Record<PlanType, PlanFeatures> = {
         name: 'Gratuito',
         price: 0,
         features: {
-            maxRecipes: 15,
+            maxRecipes: 10,
             aiConsultant: false,
             financialReports: false,
             stockManagement: 'basic',
-            tableManagement: false,
+            tableManagement: true,
             loyaltySystem: false,
             whatsappIntegration: false,
             supportPriority: false,
+            pdv: true,
+            digitalMenu: false,
         },
     },
     starter: {
@@ -36,12 +40,30 @@ export const PLANS: Record<PlanType, PlanFeatures> = {
         features: {
             maxRecipes: 'unlimited',
             aiConsultant: false,
-            financialReports: true,
+            financialReports: false,
             stockManagement: 'basic',
-            tableManagement: true,
+            tableManagement: false,
             loyaltySystem: false,
             whatsappIntegration: false,
             supportPriority: false,
+            pdv: false,
+            digitalMenu: false,
+        },
+    },
+    online: {
+        name: 'Operação Online',
+        price: 89.90,
+        features: {
+            maxRecipes: 'unlimited',
+            aiConsultant: false,
+            financialReports: false,
+            stockManagement: 'basic',
+            tableManagement: false,
+            loyaltySystem: true,
+            whatsappIntegration: true,
+            supportPriority: false,
+            pdv: false,
+            digitalMenu: true,
         },
     },
     pro: {
@@ -56,6 +78,9 @@ export const PLANS: Record<PlanType, PlanFeatures> = {
             loyaltySystem: true,
             whatsappIntegration: true,
             supportPriority: true,
+            pdv: true,
+            digitalMenu: true,
         },
     },
+
 };

@@ -25,7 +25,7 @@ const NavItem = ({ to, icon: Icon, label, active, highlight }: { to: string, ico
 );
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
-  const { user, signOut } = useAuth();
+  const { user, signOut, checkAccess } = useAuth();
   const { settings } = useApp();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);

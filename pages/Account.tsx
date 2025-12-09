@@ -7,7 +7,8 @@ import {
   User, Mail, Store, CreditCard, Shield, Download, CheckCircle, AlertTriangle,
   Save, Loader2, Lock, Bell, Activity, BarChart3, Camera, Moon, Sun,
   Trash2, Settings as SettingsIcon, TrendingUp, Package, Users, ShoppingBag,
-  Calendar, DollarSign, FileText, LogOut, Eye, EyeOff, Upload, Phone, MapPin
+  Calendar, DollarSign, FileText, LogOut, Eye, EyeOff, Upload, Phone, MapPin,
+  ArrowUpCircle, Brain, ChefHat, MessageCircle, Star
 } from 'lucide-react';
 
 import { PLANS, PlanFeatures } from '../constants/plans';
@@ -71,18 +72,78 @@ const Account: React.FC = () => {
     }
   }, [user, settings]);
 
+  // Handle payment success return
+  useEffect(() => {
+    if (searchParams.get('payment') === 'success') {
+      setMsg({ type: 'success', text: 'Pagamento confirmado! Seu plano foi atualizado.' });
+      refreshUserPlan();
+      // Limpar URL
+      window.history.replaceState({}, '', window.location.pathname + '?tab=plan');
+    }
+  }, [searchParams]);
+
   // Handle plan update
   const handleUpdatePlan = async (newPlan: PlanType) => {
     if (!user) return;
+
+    // Se for plano pago, iniciar checkout do Stripe
+    if (newPlan !== 'free') {
+      setLoading(true);
+      setMsg(null);
+      try {
+        const { initiateCheckout } = await import('../utils/stripe');
+        await initiateCheckout(newPlan as 'starter' | 'online' | 'pro');
+        // O redirecionamento acontece dentro da função, não precisamos fazer mais nada aqui
+      } catch (e: any) {
+        console.error('Erro no checkout:', e);
+        setMsg({ type: 'error', text: 'Erro ao iniciar pagamento: ' + (e.message || 'Tente novamente') });
+        setLoading(false);
+      }
+      return;
+    }
+
+    // Lógica para plano GRATUITO (Downgrade direto)
+    if (!confirm('Tem certeza que deseja mudar para o plano Gratuito? Você perderá acesso a recursos exclusivos.')) {
+      return;
+    }
+
     setLoading(true);
     setMsg(null);
     try {
-      await supabase.from('user_settings').update({ plan: newPlan }).eq('user_id', user.id);
+      // 1. Tentar atualizar o registro existente
+      const { data, error } = await supabase
+        .from('user_settings')
+        .update({ plan: newPlan, subscription_status: 'active' }) // Resetar status ao voltar pro free
+        .eq('user_id', user.id)
+        .select();
+
+      if (error) throw error;
+
+      // 2. Se nenhum registro foi retornado/atualizado, cria um novo
+      if (!data || data.length === 0) {
+        const { error: insertError } = await supabase
+          .from('user_settings')
+          .insert({
+            user_id: user.id,
+            plan: newPlan,
+            business_name: businessName || 'Meu Negócio'
+          });
+
+        if (insertError) {
+          if (insertError.code === '23505' || insertError.message?.includes('Conflict')) {
+            await supabase.from('user_settings').update({ plan: newPlan }).eq('user_id', user.id);
+          } else {
+            throw insertError;
+          }
+        }
+      }
+
       await refreshUserPlan();
       setMsg({ type: 'success', text: `Plano alterado para ${PLANS[newPlan].name} com sucesso!` });
       setIsComparingPlans(false);
     } catch (e: any) {
-      setMsg({ type: 'error', text: 'Erro ao alterar plano: ' + e.message });
+      console.error('Erro ao atualizar plano:', e);
+      setMsg({ type: 'error', text: 'Erro ao alterar plano: ' + (e.message || 'Desconhecido') });
     } finally {
       setLoading(false);
     }
@@ -721,64 +782,113 @@ const Account: React.FC = () => {
               {!isComparingPlans ? (
                 <>
                   {/* Current Plan Card */}
-                  <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-8 text-white relative overflow-hidden">
-                    <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 bg-white opacity-5 rounded-full blur-3xl"></div>
-                    <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-60 h-60 bg-orange-500 opacity-10 rounded-full blur-3xl"></div>
+                  {/* Current Plan Card - Redesigned */}
+                  <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 rounded-3xl p-8 text-white relative overflow-hidden shadow-2xl border border-gray-700/50 group hover:border-gray-600 transition-all duration-500">
+                    {/* Background decorations */}
+                    <div className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 bg-orange-500/10 rounded-full blur-[100px] group-hover:bg-orange-500/20 transition-all duration-700"></div>
+                    <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-60 h-60 bg-blue-500/10 rounded-full blur-[80px] group-hover:bg-blue-500/20 transition-all duration-700"></div>
 
-                    <div className="relative z-10">
-                      <div className="flex items-start justify-between mb-6">
-                        <div>
-                          <div className="flex items-center gap-3 mb-2">
-                            <h3 className="text-3xl font-bold">{currentPlan.name}</h3>
-                            <span className={`text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider ${userPlan === 'pro' ? 'bg-purple-500' : userPlan === 'starter' ? 'bg-orange-500' : 'bg-gray-500'}`}>
-                              Ativo
-                            </span>
+                    <div className="relative z-10 flex flex-col lg:flex-row gap-12 items-center justify-between">
+                      {/* Plan Info */}
+                      <div className="flex-1 space-y-6 text-center lg:text-left w-full">
+                        <div className="space-y-4">
+                          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 backdrop-blur-md border border-white/10 text-xs font-bold tracking-wider uppercase text-orange-300 shadow-sm">
+                            <div className="w-2 h-2 rounded-full bg-orange-400 animate-pulse box-shadow-lg shadow-orange-500" />
+                            Plano Ativo
                           </div>
-                          <p className="text-white/70">
-                            {Number(currentPlan.price) > 0
-                              ? `R$ ${currentPlan.price.toFixed(2)} por mês`
-                              : 'Gratuito para sempre'}
-                          </p>
+
+                          <div>
+                            <h3 className="text-4xl lg:text-5xl font-black tracking-tight text-white mb-2 drop-shadow-lg">
+                              {currentPlan.name}
+                            </h3>
+                            <p className="text-xl text-gray-400 font-medium flex items-baseline justify-center lg:justify-start gap-2">
+                              {Number(currentPlan.price) > 0
+                                ? <>R$ <span className="text-white text-3xl font-bold">{currentPlan.price.toFixed(2)}</span> /mês</>
+                                : 'Gratuito para sempre'
+                              }
+                            </p>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <div className="p-3 bg-white/10 rounded-xl backdrop-blur-sm">
-                            <CreditCard size={32} />
-                          </div>
+
+                        <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
+                          <button
+                            onClick={() => setIsComparingPlans(true)}
+                            className="px-8 py-4 bg-white text-gray-900 rounded-2xl font-bold hover:bg-orange-50 transition-all shadow-xl shadow-orange-900/10 flex items-center justify-center gap-3 group-hover:scale-105 active:scale-95 duration-300"
+                          >
+                            <ArrowUpCircle size={20} className="text-orange-600" />
+                            Fazer Upgrade
+                          </button>
+                          <button
+                            onClick={() => alert("Portal em breve!")}
+                            className="px-8 py-4 bg-white/5 text-white rounded-2xl font-semibold hover:bg-white/10 transition-all backdrop-blur-sm border border-white/10 flex items-center justify-center gap-3 hover:border-white/20"
+                          >
+                            <CreditCard size={20} />
+                            Gerenciar
+                          </button>
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div className="flex items-center gap-2 text-white/90">
-                          <CheckCircle size={16} className="text-green-400 flex-shrink-0" />
-                          <span className="text-sm">Receitas: {currentPlan.features.maxRecipes === 'unlimited' ? 'Ilimitadas' : currentPlan.features.maxRecipes}</span>
+                      {/* Feature Status / Limits Panel */}
+                      <div className="w-full lg:w-5/12 bg-gray-900/50 backdrop-blur-xl rounded-2xl p-6 border border-white/10 shadow-inner">
+                        <div className="flex items-center justify-between mb-6 pb-4 border-b border-white/5">
+                          <h4 className="text-sm font-bold text-gray-400 uppercase tracking-widest">Recursos do Plano</h4>
+                          <SettingsIcon size={16} className="text-gray-500" />
                         </div>
-                        <div className="flex items-center gap-2 text-white/90">
-                          <CheckCircle size={16} className={currentPlan.features.financialReports ? "text-green-400" : "text-gray-500"} />
-                          <span className="text-sm">Relatórios Financeiros</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-white/90">
-                          <CheckCircle size={16} className={currentPlan.features.aiConsultant ? "text-green-400" : "text-gray-500"} />
-                          <span className="text-sm">Consultor IA</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-white/90">
-                          <CheckCircle size={16} className={currentPlan.features.loyaltySystem ? "text-green-400" : "text-gray-500"} />
-                          <span className="text-sm">Sistema Fidelidade</span>
-                        </div>
-                      </div>
 
-                      <div className="mt-6 flex flex-wrap gap-3">
-                        <button
-                          onClick={() => setIsComparingPlans(true)}
-                          className="px-6 bg-white text-gray-900 py-3 rounded-xl font-bold hover:bg-gray-100 transition-all border border-transparent shadow-lg"
-                        >
-                          Ver Outros Planos
-                        </button>
-                        <button
-                          onClick={() => alert("O portal de assinaturas ainda não está configurado.")}
-                          className="px-6 bg-white/10 text-white py-3 rounded-xl font-bold hover:bg-white/20 transition-all border border-white/20"
-                        >
-                          Gerenciar Assinatura
-                        </button>
+                        <div className="space-y-6">
+                          {/* Recipes Limit Progress */}
+                          <div className="space-y-2">
+                            <div className="flex justify-between text-sm">
+                              <span className="text-gray-300 flex items-center gap-2">
+                                <ChefHat size={16} className="text-orange-400" />
+                                Receitas Cadastradas
+                              </span>
+                              <span className="font-bold text-white bg-white/10 px-2 py-0.5 rounded text-xs">
+                                {products.length} / {currentPlan.features.maxRecipes === 'unlimited' ? '∞' : currentPlan.features.maxRecipes}
+                              </span>
+                            </div>
+                            <div className="h-2.5 w-full bg-gray-800 rounded-full overflow-hidden border border-white/5">
+                              <div
+                                className="h-full bg-gradient-to-r from-orange-500 to-red-500 rounded-full transition-all duration-1000 ease-out relative"
+                                style={{
+                                  width: currentPlan.features.maxRecipes === 'unlimited'
+                                    ? '100%' // Full bar for unlimited
+                                    : `${Math.min((products.length / (currentPlan.features.maxRecipes as number)) * 100, 100)}%`
+                                }}
+                              >
+                                {currentPlan.features.maxRecipes === 'unlimited' && (
+                                  <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Features Grid */}
+                          <div className="grid grid-cols-2 gap-3">
+                            {[
+                              { label: 'Consultor IA', active: currentPlan.features.aiConsultant, icon: Brain },
+                              { label: 'Relatórios', active: currentPlan.features.financialReports, icon: TrendingUp },
+                              { label: 'Fidelidade', active: currentPlan.features.loyaltySystem, icon: Star },
+                              { label: 'WhatsApp', active: currentPlan.features.whatsappIntegration, icon: MessageCircle },
+                            ].map((feature, idx) => (
+                              <div
+                                key={idx}
+                                className={`p-3 rounded-xl border flex items-center gap-3 transition-all duration-300 ${feature.active
+                                  ? 'border-green-500/20 bg-green-500/5 hover:bg-green-500/10'
+                                  : 'border-gray-800 bg-gray-800/20 opacity-40 grayscale'
+                                  }`}
+                              >
+                                <div className={`p-1.5 rounded-lg ${feature.active ? 'bg-green-500/20 text-green-400' : 'bg-gray-700 text-gray-500'}`}>
+                                  <feature.icon size={14} />
+                                </div>
+                                <span className={`text-xs font-bold leading-tight ${feature.active ? 'text-gray-200' : 'text-gray-500'}`}>
+                                  {feature.label}
+                                </span>
+                                {feature.active && <CheckCircle size={12} className="ml-auto text-green-500" />}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -823,7 +933,7 @@ const Account: React.FC = () => {
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
                     {(Object.entries(PLANS) as [PlanType, PlanFeatures][]).map(([key, plan]) => {
                       const isCurrent = userPlan === key;
                       return (
@@ -868,7 +978,7 @@ const Account: React.FC = () => {
                               : 'bg-gray-900 text-white hover:bg-black shadow-lg hover:shadow-xl'
                               }`}
                           >
-                            {loading && !isCurrent ? <Loader2 className="animate-spin mx-auto" /> : isCurrent ? 'Plano Atual' : key === 'free' ? 'Downgrade' : 'Escolher Plano'}
+                            {loading && !isCurrent ? <Loader2 className="animate-spin mx-auto" /> : isCurrent ? 'Plano Atual' : 'Escolher Plano'}
                           </button>
                         </div>
                       );
