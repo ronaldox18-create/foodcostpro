@@ -2,13 +2,14 @@ import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../contexts/AppContext';
 import { formatCurrency } from '../utils/calculations';
-import { Order, OrderStatus } from '../types';
+import { Order, OrderStatus, PaymentMethod } from '../types';
 import {
     Package, Clock, CheckCircle, XCircle, Truck, User, Phone, MapPin,
     ShoppingBag, DollarSign, FileText, Utensils, Store, Globe,
     Filter, Search, Calendar, Grid3x3, ChefHat, CheckCircle2,
     LayoutGrid, List, SlidersHorizontal, ArrowUpRight, AlertCircle, Trash2, MoreHorizontal, Printer
 } from 'lucide-react';
+import ConfirmPaymentModal from '../components/ConfirmPaymentModal';
 
 const AllOrders: React.FC = () => {
     const navigate = useNavigate();
@@ -20,6 +21,7 @@ const AllOrders: React.FC = () => {
     const [selectedSource, setSelectedSource] = useState<'all' | 'virtual' | 'table' | 'counter' | 'ifood'>('all');
     const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+    const [confirmingOrder, setConfirmingOrder] = useState<Order | null>(null);
 
     // Quick Stats do dia
     const todayStats = useMemo(() => {
@@ -165,7 +167,48 @@ const AllOrders: React.FC = () => {
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Sempre ordenar por data decrescente
     }, [orders, filterGroup, selectedSource, searchTerm]);
 
+    const handleConfirmPayment = async (paymentMethod: PaymentMethod, cashRegisterId: string | null) => {
+        if (!confirmingOrder) return;
+
+        setUpdatingOrderId(confirmingOrder.id);
+        try {
+            // CRITICAL: Verificar estoque antes de finalizar
+            const itemsToCheck = confirmingOrder.items.map(item => ({ ...item }));
+            const { available, missingItems } = await checkStockAvailability(itemsToCheck);
+
+            if (!available) {
+                alert(`❌ ESTOQUE INSUFICIENTE!\n\nNão é possível finalizar o pedido. Itens em falta:\n\n${missingItems.join('\n')}\n\nReponha o estoque antes de continuar.`);
+                setConfirmingOrder(null);
+                setUpdatingOrderId(null);
+                return;
+            }
+
+            await updateOrder({
+                ...confirmingOrder,
+                status: 'completed',
+                paymentMethod: paymentMethod,
+                cash_register_id: cashRegisterId
+            } as any);
+
+            setConfirmingOrder(null);
+            setSelectedOrder(null);
+        } catch (error) {
+            console.error("Erro ao finalizar pagamento:", error);
+            alert("Erro ao finalizar pagamento.");
+        } finally {
+            setUpdatingOrderId(null);
+        }
+    };
+
     const handleStatusChange = async (order: Order, newStatus: OrderStatus) => {
+        // INTERCEPT COMPLETION FOR PAYMENT CONFIRMATION
+        if (newStatus === 'completed') {
+            // Check if we need to confirm payment (basically always good practice before closing)
+            // Especially for Cash orders or if we want to ensure it enters a register
+            setConfirmingOrder(order);
+            return;
+        }
+
         setUpdatingOrderId(order.id);
         try {
             // Verificar e baixar estoque se estiver aceitando um pedido pendente
@@ -475,7 +518,7 @@ const AllOrders: React.FC = () => {
                         <div className="p-4 bg-white border-t border-gray-100 shrink-0">
                             <div className="grid grid-cols-2 gap-3">
                                 {selectedOrder.status === 'open' && (
-                                    <button onClick={() => { handleStatusChange(selectedOrder, 'completed'); setSelectedOrder(null); }} className="col-span-2 py-3 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 transition shadow-lg shadow-green-200">
+                                    <button onClick={() => { handleStatusChange(selectedOrder, 'completed'); }} className="col-span-2 py-3 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 transition shadow-lg shadow-green-200">
                                         Concluir Venda
                                     </button>
                                 )}
@@ -505,13 +548,13 @@ const AllOrders: React.FC = () => {
                                             <Truck size={18} /> Saiu para Entrega
                                         </button>
                                     ) : (
-                                        <button onClick={() => { handleStatusChange(selectedOrder, 'completed'); setSelectedOrder(null); }} className="col-span-2 py-3 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 transition flex items-center justify-center gap-2 shadow-lg shadow-green-200">
+                                        <button onClick={() => { handleStatusChange(selectedOrder, 'completed'); }} className="col-span-2 py-3 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 transition flex items-center justify-center gap-2 shadow-lg shadow-green-200">
                                             <CheckCircle2 size={18} /> Entregue / Concluído
                                         </button>
                                     )
                                 )}
                                 {selectedOrder.status === 'delivered' && (
-                                    <button onClick={() => { handleStatusChange(selectedOrder, 'completed'); setSelectedOrder(null); }} className="col-span-2 py-3 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 transition flex items-center justify-center gap-2 shadow-lg shadow-green-200">
+                                    <button onClick={() => { handleStatusChange(selectedOrder, 'completed'); }} className="col-span-2 py-3 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 transition flex items-center justify-center gap-2 shadow-lg shadow-green-200">
                                         <CheckCircle size={18} /> Finalizar Pedido
                                     </button>
                                 )}
@@ -522,6 +565,15 @@ const AllOrders: React.FC = () => {
                 </div>
             )
             }
+
+            {/* Confirm Payment Modal */}
+            {confirmingOrder && (
+                <ConfirmPaymentModal
+                    order={confirmingOrder}
+                    onConfirm={handleConfirmPayment}
+                    onCancel={() => setConfirmingOrder(null)}
+                />
+            )}
         </div >
     );
 };

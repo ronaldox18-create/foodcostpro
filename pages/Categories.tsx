@@ -1,12 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { Plus, Edit, Trash2, Tag, Package } from 'lucide-react';
+import { Plus, Edit, Trash2, Tag, Package, RefreshCw, Loader2 } from 'lucide-react';
 
 const Categories: React.FC = () => {
-    const { categories, products, addCategory, updateCategory, deleteCategory } = useApp();
+    const { categories, products, addCategory, updateCategory, deleteCategory, syncCategoryWithIfood } = useApp();
     const [newCategory, setNewCategory] = useState('');
     const [editingCategory, setEditingCategory] = useState<string | null>(null);
     const [editName, setEditName] = useState('');
+    const [syncingCategory, setSyncingCategory] = useState<string | null>(null);
 
     const categoryStats = useMemo(() => {
         return categories.map(cat => ({
@@ -50,6 +51,18 @@ const Categories: React.FC = () => {
             }
         }
         await deleteCategory(category);
+    };
+
+    const handleSyncCategory = async (category: string) => {
+        setSyncingCategory(category);
+        const result = await syncCategoryWithIfood(category);
+        setSyncingCategory(null);
+
+        if (result.success) {
+            alert('Categoria sincronizada com sucesso!');
+        } else {
+            alert('Erro ao sincronizar categoria: ' + result.message);
+        }
     };
 
     return (
@@ -136,13 +149,30 @@ const Categories: React.FC = () => {
                                             </div>
                                             <div>
                                                 <h3 className="font-bold text-gray-900">{name}</h3>
-                                                <p className="text-sm text-gray-500 flex items-center gap-1">
-                                                    <Package size={14} />
-                                                    {productCount} produto{productCount !== 1 ? 's' : ''}
-                                                </p>
+                                                <div className="flex items-center gap-3 mt-1">
+                                                    <p className="text-sm text-gray-500 flex items-center gap-1">
+                                                        <Package size={14} />
+                                                        {productCount} produto{productCount !== 1 ? 's' : ''}
+                                                    </p>
+                                                </div>
                                             </div>
                                         </div>
                                         <div className="flex gap-2">
+                                            <button
+                                                onClick={() => handleSyncCategory(name)}
+                                                disabled={syncingCategory === name}
+                                                className={`p-2 rounded-lg transition-colors ${syncingCategory === name
+                                                        ? 'text-gray-400 bg-gray-50'
+                                                        : 'text-blue-600 hover:bg-blue-50'
+                                                    }`}
+                                                title="Sincronizar com iFood"
+                                            >
+                                                {syncingCategory === name ? (
+                                                    <Loader2 size={18} className="animate-spin" />
+                                                ) : (
+                                                    <RefreshCw size={18} />
+                                                )}
+                                            </button>
                                             <button
                                                 onClick={() => handleEdit(name)}
                                                 className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
@@ -166,7 +196,7 @@ const Categories: React.FC = () => {
                 )}
             </div>
 
-        </div>
+        </div >
     );
 };
 

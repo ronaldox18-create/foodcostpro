@@ -68,5 +68,35 @@ export const IntegrationService = {
             .eq('provider', provider);
 
         if (error) throw error;
+        if (error) throw error;
+    },
+
+    /**
+     * Test connection for a specific provider
+     */
+    async testConnection(provider: string): Promise<boolean> {
+        if (provider !== 'ifood') throw new Error("Teste não suportado para este provedor");
+
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("User not authenticated");
+
+        // Chama a Edge Function para testar
+        const { data, error } = await supabase.functions.invoke('sync-catalog', {
+            body: {
+                action: 'test_auth',
+                userId: user.id
+            }
+        });
+
+        if (error) {
+            console.error("Erro no teste de conexão:", error);
+            throw new Error(error.message || 'Erro ao comunicar com o servidor.');
+        }
+
+        if (data?.error) {
+            throw new Error(data.error);
+        }
+
+        return true;
     }
 };

@@ -2,19 +2,21 @@ import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../contexts/AppContext';
 import { formatCurrency } from '../utils/calculations';
-import { Order, OrderStatus } from '../types';
+import { Order, OrderStatus, PaymentMethod } from '../types';
 import {
     Package, Clock, CheckCircle, XCircle, Truck, User, Phone, MapPin,
     ShoppingBag, DollarSign, FileText, Utensils, Store, Globe,
     Filter, Search, Calendar, Grid3x3, ChefHat, CheckCircle2, ArrowRight
 } from 'lucide-react';
+import ConfirmPaymentModal from '../components/ConfirmPaymentModal';
 
 const MenuOrders: React.FC = () => {
     const navigate = useNavigate();
-    const { orders, loading: contextLoading, updateOrder } = useApp();
+    const { orders, loading: contextLoading, updateOrder, checkStockAvailability, handleStockUpdate } = useApp();
 
     const [selectedStatus, setSelectedStatus] = useState<OrderStatus | 'all'>('all');
     const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
+    const [confirmingOrder, setConfirmingOrder] = useState<Order | null>(null);
 
     const getStatusInfo = (status: OrderStatus) => {
         switch (status) {
@@ -41,7 +43,44 @@ const MenuOrders: React.FC = () => {
         });
     }, [orders, selectedStatus]);
 
+    const handleConfirmPayment = async (paymentMethod: PaymentMethod, cashRegisterId: string | null) => {
+        if (!confirmingOrder) return;
+
+        setUpdatingOrderId(confirmingOrder.id);
+        try {
+            // CRITICAL: Verificar estoque antes de finalizar
+            const itemsToCheck = confirmingOrder.items.map(item => ({ ...item }));
+            const { available, missingItems } = await checkStockAvailability(itemsToCheck);
+
+            if (!available) {
+                alert(`❌ ESTOQUE INSUFICIENTE!\n\nNão é possível finalizar o pedido. Itens em falta:\n\n${missingItems.join('\n')}\n\nReponha o estoque antes de continuar.`);
+                setConfirmingOrder(null);
+                setUpdatingOrderId(null);
+                return;
+            }
+
+            await updateOrder({
+                ...confirmingOrder,
+                status: 'completed',
+                paymentMethod: paymentMethod,
+                cash_register_id: cashRegisterId
+            } as any);
+
+            setConfirmingOrder(null);
+        } catch (error) {
+            console.error("Erro ao finalizar pagamento:", error);
+            alert("Erro ao finalizar pagamento.");
+        } finally {
+            setUpdatingOrderId(null);
+        }
+    };
+
     const handleStatusChange = async (order: Order, newStatus: OrderStatus) => {
+        if (newStatus === 'completed') {
+            setConfirmingOrder(order);
+            return;
+        }
+
         setUpdatingOrderId(order.id);
         try {
             await updateOrder({ ...order, status: newStatus });
@@ -91,8 +130,8 @@ const MenuOrders: React.FC = () => {
                         key={status.id}
                         onClick={() => setSelectedStatus(status.id as any)}
                         className={`px-4 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-all ${selectedStatus === status.id
-                                ? 'bg-orange-600 text-white shadow-md'
-                                : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+                            ? 'bg-orange-600 text-white shadow-md'
+                            : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
                             }`}
                     >
                         {status.label}
@@ -200,6 +239,15 @@ const MenuOrders: React.FC = () => {
                     })
                 )}
             </div>
+
+            {/* Confirm Payment Modal */}
+            {confirmingOrder && (
+                <ConfirmPaymentModal
+                    order={confirmingOrder}
+                    onConfirm={handleConfirmPayment}
+                    onCancel={() => setConfirmingOrder(null)}
+                />
+            )}
         </div>
     );
 };

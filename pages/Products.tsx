@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { Product, RecipeItem, UnitType } from '../types';
-import { Plus, Trash2, Edit2, Calculator, Info, AlertTriangle, Copy, Sparkles, Loader, Wand2, X, TrendingUp, DollarSign, Percent, ChevronRight, Lock } from 'lucide-react';
+import { Plus, Trash2, Edit2, Calculator, Info, AlertTriangle, Copy, Sparkles, Loader, Wand2, X, TrendingUp, DollarSign, Percent, ChevronRight, Lock, RefreshCw, Layers } from 'lucide-react';
 import PlanGuard from '../components/PlanGuard';
 import { useAuth } from '../contexts/AuthContext';
 import { calculateProductMetrics, formatCurrency, formatPercent } from '../utils/calculations';
 import { askAI } from '../utils/aiHelper';
 
 const Products: React.FC = () => {
-  const { products, ingredients, fixedCosts, settings, categories, addProduct, updateProduct, deleteProduct } = useApp();
+  const { products, ingredients, fixedCosts, settings, categories, addProduct, updateProduct, deleteProduct, syncProductWithIfood } = useApp();
   const { checkAccess } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -19,6 +19,10 @@ const Products: React.FC = () => {
   // AI Loading States
   const [isAiDescLoading, setIsAiDescLoading] = useState(false);
   const [isAiPrepLoading, setIsAiPrepLoading] = useState(false);
+
+  // Sync State
+  const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [isSyncingAll, setIsSyncingAll] = useState(false);
 
   // Price Suggestion Modal
   const [priceModalOpen, setPriceModalOpen] = useState(false);
@@ -96,6 +100,44 @@ const Products: React.FC = () => {
       deleteProduct(deleteConfirmation.id);
       setDeleteConfirmation(null);
     }
+  };
+
+  const handleSyncProduct = async (product: Product) => {
+    setSyncingId(product.id);
+    try {
+      const result = await syncProductWithIfood(product);
+      if (result.success) {
+        alert(`✅ ${product.name} sincronizado com sucesso!`);
+      } else {
+        alert(`❌ Erro ao sincronizar: ${result.message}`);
+      }
+    } catch (e) {
+      alert('Erro desconhecido ao sincronizar.');
+    } finally {
+      setSyncingId(null);
+    }
+  };
+
+  const handleSyncAll = async () => {
+    if (products.length === 0) return;
+    if (!confirm(`Deseja sincronizar todos os ${products.length} produtos com o iFood? Isso pode levar alguns instantes.`)) return;
+
+    setIsSyncingAll(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const product of products) {
+      try {
+        const result = await syncProductWithIfood(product);
+        if (result.success) successCount++;
+        else failCount++;
+      } catch (e) {
+        failCount++;
+      }
+    }
+
+    setIsSyncingAll(false);
+    alert(`Sincronização concluída!\n✅ Sucessos: ${successCount}\n❌ Falhas: ${failCount}`);
   };
 
   // --- AI ACTIONS ---
@@ -264,6 +306,17 @@ const Products: React.FC = () => {
           <p className="text-gray-500">Análise detalhada de custos, markup e preço sugerido.</p>
         </div>
         <div className="flex gap-2">
+          {/* BOTÃO DE SINCRONIZAÇÃO IFOOD (Novo) */}
+          <button
+            onClick={handleSyncAll}
+            disabled={isSyncingAll || products.length === 0}
+            className="flex items-center gap-2 bg-white text-red-600 border border-red-200 px-4 py-2 rounded-lg hover:bg-red-50 transition shadow-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Sincronizar Cardápio com iFood"
+          >
+            {isSyncingAll ? <Loader size={18} className="animate-spin" /> : <RefreshCw size={18} />}
+            {isSyncingAll ? 'Sincronizando...' : 'Sync iFood'}
+          </button>
+
           {isLimitReached ? (
             <button
               disabled
@@ -297,11 +350,30 @@ const Products: React.FC = () => {
                   {product.description && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{product.description}</p>}
                 </div>
                 <div className="flex gap-1">
+                  <button
+                    onClick={() => handleSyncProduct(product)}
+                    disabled={syncingId === product.id}
+                    title="Sincronizar com iFood"
+                    className={`p-2 rounded-lg transition ${product.ifood_status === 'AVAILABLE' ? 'text-green-600 hover:bg-green-50' : 'text-gray-400 hover:text-red-600 hover:bg-red-50'}`}
+                  >
+                    {syncingId === product.id ? <Loader size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+                  </button>
                   <button onClick={() => handleEdit(product)} title="Editar" className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"><Edit2 size={16} /></button>
                   <button onClick={() => handleDuplicate(product)} title="Duplicar" className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition"><Copy size={16} /></button>
                   <button onClick={() => handleDeleteClick(product)} title="Excluir" className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"><Trash2 size={16} /></button>
                 </div>
               </div>
+
+              {/* iFood Sync Status Badge */}
+              {product.ifood_status && (
+                <div className="px-5 pt-2">
+                  <div className={`text-[10px] font-bold uppercase tracking-wider inline-flex items-center gap-1 ${product.ifood_status === 'AVAILABLE' ? 'text-green-600' : 'text-gray-400'
+                    }`}>
+                    <div className={`w-1.5 h-1.5 rounded-full ${product.ifood_status === 'AVAILABLE' ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                    {product.ifood_status === 'AVAILABLE' ? 'iFood: Ativo' : 'iFood: Inativo'}
+                  </div>
+                </div>
+              )}
 
               <div className="p-5 space-y-3 flex-1 text-sm">
                 <div className="space-y-1 pb-3 border-b border-gray-50">
@@ -350,447 +422,455 @@ const Products: React.FC = () => {
         })}
       </div>
 
-      {products.length === 0 && (
-        <div className="text-center py-12 text-gray-400 bg-white rounded-xl border border-dashed border-gray-200">
-          <Calculator size={48} className="mx-auto mb-4 opacity-50" />
-          <p>Nenhum produto cadastrado. Comece criando seu cardápio!</p>
-        </div>
-      )}
+      {
+        products.length === 0 && (
+          <div className="text-center py-12 text-gray-400 bg-white rounded-xl border border-dashed border-gray-200">
+            <Calculator size={48} className="mx-auto mb-4 opacity-50" />
+            <p>Nenhum produto cadastrado. Comece criando seu cardápio!</p>
+          </div>
+        )
+      }
 
       {/* Modal Confirmação de Exclusão */}
-      {deleteConfirmation && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-in fade-in">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 text-center animate-in zoom-in-95">
-            <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
-              <AlertTriangle size={24} />
-            </div>
-            <h3 className="text-lg font-bold text-gray-900 mb-2">Excluir Produto?</h3>
-            <p className="text-gray-500 text-sm mb-6">
-              Tem certeza que deseja excluir <strong>{deleteConfirmation.name}</strong>? Essa ação não pode ser desfeita.
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setDeleteConfirmation(null)}
-                className="flex-1 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium bg-white text-gray-700 transition"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={confirmDelete}
-                className="flex-1 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium transition"
-              >
-                Excluir
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal de Sugestão de Preço */}
-      {priceModalOpen && priceSuggestion && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4 animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95">
-            {/* Header */}
-            <div className="bg-gradient-to-r from-green-600 to-emerald-600 p-6 text-white">
-              <div className="flex justify-between items-start">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <Sparkles size={24} className="text-yellow-300" />
-                    <h3 className="text-xl font-bold">Preço Sugerido</h3>
-                  </div>
-                  <p className="text-green-100 text-sm">Análise completa de custos e markup</p>
-                </div>
+      {
+        deleteConfirmation && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-in fade-in">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 text-center animate-in zoom-in-95">
+              <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertTriangle size={24} />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">Excluir Produto?</h3>
+              <p className="text-gray-500 text-sm mb-6">
+                Tem certeza que deseja excluir <strong>{deleteConfirmation.name}</strong>? Essa ação não pode ser desfeita.
+              </p>
+              <div className="flex gap-3">
                 <button
-                  onClick={() => setPriceModalOpen(false)}
-                  className="text-white/80 hover:text-white transition"
-                >
-                  <X size={24} />
-                </button>
-              </div>
-
-              {/* Preço em destaque */}
-              <div className="mt-6 text-center">
-                <div className="text-sm text-green-100 mb-1">Preço Recomendado</div>
-                <div className="text-5xl font-bold text-white mb-1">
-                  {formatCurrency(priceSuggestion.suggested)}
-                </div>
-                <div className="text-green-100 text-sm">
-                  Margem líquida de {priceSuggestion.marginPercent}%
-                </div>
-              </div>
-            </div>
-
-            {/* Body - Breakdown */}
-            <div className="p-6 space-y-4">
-              {/* Custo Ingredientes */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
-                    <Calculator size={16} className="text-orange-600" />
-                  </div>
-                  <h4 className="font-bold text-gray-900">Composição do Preço</h4>
-                </div>
-
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between items-center p-2 bg-white rounded border border-gray-100">
-                    <span className="text-gray-600">CMV (Ingredientes)</span>
-                    <span className="font-bold text-gray-900">{formatCurrency(priceSuggestion.costIngredients)}</span>
-                  </div>
-
-                  <div className="flex justify-between items-center p-2 bg-white rounded border border-gray-100">
-                    <span className="text-gray-600 flex items-center gap-1">
-                      Custos Fixos
-                      <span className="text-xs text-gray-400">({priceSuggestion.fixedPercent.toFixed(1)}%)</span>
-                    </span>
-                    <span className="font-medium text-gray-700">
-                      {formatCurrency((priceSuggestion.suggested * priceSuggestion.fixedPercent) / 100)}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between items-center p-2 bg-white rounded border border-gray-100">
-                    <span className="text-gray-600 flex items-center gap-1">
-                      Impostos/Perdas
-                      <span className="text-xs text-gray-400">({priceSuggestion.variablePercent}%)</span>
-                    </span>
-                    <span className="font-medium text-gray-700">
-                      {formatCurrency((priceSuggestion.suggested * priceSuggestion.variablePercent) / 100)}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between items-center p-2 bg-green-50 rounded border border-green-200">
-                    <span className="text-green-700 font-medium flex items-center gap-1">
-                      Lucro Líquido
-                      <span className="text-xs text-green-600">({priceSuggestion.marginPercent}%)</span>
-                    </span>
-                    <span className="font-bold text-green-700">
-                      {formatCurrency((priceSuggestion.suggested * priceSuggestion.marginPercent) / 100)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Formula Details */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="flex items-start gap-2">
-                  <Info size={16} className="text-blue-600 mt-0.5 flex-shrink-0" />
-                  <div className="text-xs text-blue-900 whitespace-pre-line leading-relaxed">
-                    {priceSuggestion.breakdown}
-                  </div>
-                </div>
-              </div>
-
-              {/* Comparação com preço atual */}
-              {formData.currentPrice > 0 && (
-                <div className="bg-gray-50 rounded-lg p-3 text-sm">
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Preço Atual:</span>
-                    <span className="font-bold text-gray-900">{formatCurrency(formData.currentPrice)}</span>
-                  </div>
-                  <div className="flex justify-between items-center mt-1">
-                    <span className="text-gray-600">Diferença:</span>
-                    <span className={`font-bold ${priceSuggestion.suggested > formData.currentPrice ? 'text-green-600' : 'text-red-600'}`}>
-                      {priceSuggestion.suggested > formData.currentPrice ? '+' : ''}
-                      {formatCurrency(priceSuggestion.suggested - formData.currentPrice)}
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Footer - Actions */}
-            <div className="p-6 bg-gray-50 border-t border-gray-100 flex gap-3">
-              <button
-                onClick={() => setPriceModalOpen(false)}
-                className="flex-1 py-3 border border-gray-300 rounded-lg hover:bg-white font-medium text-gray-700 transition"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={applyPriceSuggestion}
-                className="flex-1 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 font-bold transition shadow-sm flex items-center justify-center gap-2"
-              >
-                <DollarSign size={18} />
-                Aplicar Preço
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Edição/Criação - REDESENHADO */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl my-8">
-            <form onSubmit={handleSubmit} className="flex flex-col">
-              {/* Header */}
-              <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-orange-50 to-red-50">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h3 className="text-2xl font-bold text-gray-900">{editingId ? '✏️ Editar' : '✨ Novo'} Produto</h3>
-                    <p className="text-sm text-gray-500 mt-1">Preencha os dados e otimize com IA</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsModalOpen(false)}
-                    className="text-gray-400 hover:text-gray-600 transition"
-                  >
-                    <X size={24} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-6 space-y-6 overflow-y-auto max-h-[70vh]">
-                {/* Informações Básicas */}
-                <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-                  <h4 className="text-sm font-bold text-gray-700 mb-4 flex items-center gap-2">
-                    <div className="w-6 h-6 bg-orange-100 rounded-lg flex items-center justify-center">
-                      <Info size={14} className="text-orange-600" />
-                    </div>
-                    Informações Básicas
-                  </h4>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Nome do Produto *</label>
-                      <input
-                        required
-                        type="text"
-                        value={formData.name}
-                        onChange={e => setFormData({ ...formData, name: e.target.value })}
-                        placeholder="Ex: X-Bacon Classic"
-                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none bg-white text-gray-900 transition"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Categoria</label>
-                      <select
-                        value={formData.category}
-                        onChange={e => setFormData({ ...formData, category: e.target.value })}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none bg-white text-gray-900 transition"
-                      >
-                        <option value="">Sem categoria</option>
-                        {categories.map(cat => (
-                          <option key={cat} value={cat}>{cat}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Descrição com IA */}
-                  <div className="mt-4">
-                    <div className="flex justify-between items-center mb-2">
-                      <label className="block text-sm font-medium text-gray-700">Descrição para Vendas</label>
-                      <PlanGuard feature="aiConsultant" showLock={true}>
-                        <button
-                          type="button"
-                          onClick={handleGenerateDescription}
-                          disabled={!formData.name || isAiDescLoading}
-                          className="text-xs flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 transition font-medium shadow-sm"
-                        >
-                          {isAiDescLoading ? <Loader size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                          Gerar com IA
-                        </button>
-                      </PlanGuard>
-                    </div>
-                    <textarea
-                      rows={3}
-                      placeholder="Uma descrição vendedora que desperta o apetite..."
-                      value={formData.description}
-                      onChange={e => setFormData({ ...formData, description: e.target.value })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none bg-white text-gray-900 resize-none transition"
-                    />
-                  </div>
-                </div>
-
-                {/* Preço */}
-                <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-xl p-5 shadow-sm">
-                  <h4 className="text-sm font-bold text-gray-700 mb-4 flex items-center gap-2">
-                    <div className="w-6 h-6 bg-green-100 rounded-lg flex items-center justify-center">
-                      <DollarSign size={14} className="text-green-600" />
-                    </div>
-                    Precificação
-                  </h4>
-
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    <div className="flex-1">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Preço de Venda (R$) *</label>
-                      <input
-                        required
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={formData.currentPrice}
-                        onChange={e => setFormData({ ...formData, currentPrice: parseFloat(e.target.value) })}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none bg-white text-gray-900 font-bold text-lg transition"
-                      />
-                    </div>
-                    <div className="flex items-end">
-                      <PlanGuard feature="aiConsultant" showLock={true} fallback={
-                        <button
-                          type="button"
-                          disabled
-                          className="w-full sm:w-auto px-6 py-3 bg-gray-300 text-gray-500 font-bold rounded-xl cursor-not-allowed flex items-center justify-center gap-2 opacity-70"
-                        >
-                          <Sparkles size={18} />
-                          Sugerir Preço (Pro)
-                        </button>
-                      }>
-                        <button
-                          type="button"
-                          onClick={handleSuggestPrice}
-                          className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-bold rounded-xl hover:from-green-700 hover:to-emerald-700 shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2"
-                        >
-                          <Sparkles size={18} className="text-yellow-300" />
-                          Sugerir Preço
-                        </button>
-                      </PlanGuard>
-                    </div>
-                  </div>
-                  <p className="text-xs text-green-700 mt-2 flex items-center gap-1">
-                    <Info size={12} />
-                    A IA calcula considerando todos os custos e aplica estratégias de preço
-                  </p>
-                </div>
-
-                {/* Composição/Receita */}
-                <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-                  <h4 className="text-sm font-bold text-gray-700 mb-4 flex items-center gap-2">
-                    <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">
-                      <Calculator size={14} className="text-blue-600" />
-                    </div>
-                    Composição (Ingredientes)
-                  </h4>
-
-                  {/* Adder */}
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                    <select
-                      value={newIngredientId}
-                      onChange={e => {
-                        const ing = ingredients.find(i => i.id === e.target.value);
-                        setNewIngredientId(e.target.value);
-                        if (ing) {
-                          setNewIngredientUnit(ing.purchaseUnit === 'l' ? 'ml' : (ing.purchaseUnit === 'kg' ? 'g' : 'un'));
-                        }
-                      }}
-                      className="sm:col-span-6 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 transition"
-                    >
-                      <option value="">Selecione um ingrediente...</option>
-                      {ingredients.map(i => (
-                        <option key={i.id} value={i.id}>{i.name}</option>
-                      ))}
-                    </select>
-                    <input
-                      type="number"
-                      placeholder="Quantidade"
-                      value={newIngredientQty || ''}
-                      onChange={e => setNewIngredientQty(parseFloat(e.target.value))}
-                      className="sm:col-span-3 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 transition"
-                    />
-                    <select
-                      value={newIngredientUnit}
-                      onChange={e => setNewIngredientUnit(e.target.value as UnitType)}
-                      className="sm:col-span-2 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 transition"
-                    >
-                      <option value="g">g</option>
-                      <option value="ml">ml</option>
-                      <option value="un">un</option>
-                      <option value="kg">kg</option>
-                      <option value="l">l</option>
-                    </select>
-                    <button
-                      type="button"
-                      onClick={addIngredientToRecipe}
-                      disabled={!newIngredientId || !newIngredientQty}
-                      className="sm:col-span-1 bg-blue-600 text-white px-3 py-2 rounded-lg text-sm disabled:opacity-50 hover:bg-blue-700 font-medium transition flex items-center justify-center"
-                    >
-                      <Plus size={16} />
-                    </button>
-                  </div>
-
-                  {/* Lista de ingredientes */}
-                  <div className="space-y-2">
-                    {formData.recipe.length === 0 && (
-                      <div className="text-center py-6 text-gray-400 bg-gray-50 rounded-lg border border-dashed border-gray-200">
-                        <Calculator size={32} className="mx-auto mb-2 opacity-30" />
-                        <p className="text-sm">Nenhum ingrediente adicionado</p>
-                      </div>
-                    )}
-                    {formData.recipe.map((item, idx) => {
-                      const ingName = ingredients.find(i => i.id === item.ingredientId)?.name || 'Desconhecido';
-                      return (
-                        <div key={idx} className="flex justify-between items-center bg-white p-3 rounded-lg border border-gray-200 hover:border-blue-300 transition group">
-                          <span className="text-gray-900 font-medium">{ingName}</span>
-                          <div className="flex items-center gap-3">
-                            <span className="font-mono bg-blue-50 px-3 py-1 rounded-lg text-sm text-blue-700 font-bold">
-                              {item.quantityUsed} {item.unitUsed}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => removeRecipeItem(idx)}
-                              className="text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                {/* Modo de Preparo */}
-                <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-                  <div className="flex justify-between items-center mb-4">
-                    <h4 className="text-sm font-bold text-gray-700 flex items-center gap-2">
-                      <div className="w-6 h-6 bg-indigo-100 rounded-lg flex items-center justify-center">
-                        <ChevronRight size={14} className="text-indigo-600" />
-                      </div>
-                      Modo de Preparo
-                    </h4>
-                    <PlanGuard feature="aiConsultant" showLock={true}>
-                      <button
-                        type="button"
-                        onClick={handleOptimizePrepMethod}
-                        disabled={!formData.name || isAiPrepLoading}
-                        className="text-xs flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-lg hover:from-blue-600 hover:to-indigo-600 disabled:opacity-50 transition font-medium shadow-sm"
-                      >
-                        {isAiPrepLoading ? <Loader size={12} className="animate-spin" /> : <Wand2 size={12} />}
-                        Padronizar com IA
-                      </button>
-                    </PlanGuard>
-                  </div>
-                  <textarea
-                    rows={6}
-                    placeholder="1. Grelhe a carne...&#10;2. Toste o pão...&#10;3. Monte o sanduíche..."
-                    value={formData.preparationMethod}
-                    onChange={e => setFormData({ ...formData, preparationMethod: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none bg-white text-gray-900 resize-none font-mono text-sm transition"
-                  />
-                </div>
-              </div>
-
-              {/* Footer */}
-              <div className="p-6 border-t border-gray-100 bg-gray-50 flex justify-end gap-3 rounded-b-2xl">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-6 py-3 border border-gray-300 rounded-xl hover:bg-white transition bg-white text-gray-700 font-medium"
+                  onClick={() => setDeleteConfirmation(null)}
+                  className="flex-1 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium bg-white text-gray-700 transition"
                 >
                   Cancelar
                 </button>
                 <button
-                  type="submit"
-                  className="px-6 py-3 bg-orange-600 text-white rounded-xl hover:bg-orange-700 transition font-bold shadow-sm flex items-center gap-2"
+                  onClick={confirmDelete}
+                  className="flex-1 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium transition"
                 >
-                  <Calculator size={18} />
-                  Salvar Produto
+                  Excluir
                 </button>
               </div>
-            </form>
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+
+      {/* Modal de Sugestão de Preço */}
+      {
+        priceModalOpen && priceSuggestion && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4 animate-in fade-in">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-green-600 to-emerald-600 p-6 text-white">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <Sparkles size={24} className="text-yellow-300" />
+                      <h3 className="text-xl font-bold">Preço Sugerido</h3>
+                    </div>
+                    <p className="text-green-100 text-sm">Análise completa de custos e markup</p>
+                  </div>
+                  <button
+                    onClick={() => setPriceModalOpen(false)}
+                    className="text-white/80 hover:text-white transition"
+                  >
+                    <X size={24} />
+                  </button>
+                </div>
+
+                {/* Preço em destaque */}
+                <div className="mt-6 text-center">
+                  <div className="text-sm text-green-100 mb-1">Preço Recomendado</div>
+                  <div className="text-5xl font-bold text-white mb-1">
+                    {formatCurrency(priceSuggestion.suggested)}
+                  </div>
+                  <div className="text-green-100 text-sm">
+                    Margem líquida de {priceSuggestion.marginPercent}%
+                  </div>
+                </div>
+              </div>
+
+              {/* Body - Breakdown */}
+              <div className="p-6 space-y-4">
+                {/* Custo Ingredientes */}
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
+                      <Calculator size={16} className="text-orange-600" />
+                    </div>
+                    <h4 className="font-bold text-gray-900">Composição do Preço</h4>
+                  </div>
+
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between items-center p-2 bg-white rounded border border-gray-100">
+                      <span className="text-gray-600">CMV (Ingredientes)</span>
+                      <span className="font-bold text-gray-900">{formatCurrency(priceSuggestion.costIngredients)}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center p-2 bg-white rounded border border-gray-100">
+                      <span className="text-gray-600 flex items-center gap-1">
+                        Custos Fixos
+                        <span className="text-xs text-gray-400">({priceSuggestion.fixedPercent.toFixed(1)}%)</span>
+                      </span>
+                      <span className="font-medium text-gray-700">
+                        {formatCurrency((priceSuggestion.suggested * priceSuggestion.fixedPercent) / 100)}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between items-center p-2 bg-white rounded border border-gray-100">
+                      <span className="text-gray-600 flex items-center gap-1">
+                        Impostos/Perdas
+                        <span className="text-xs text-gray-400">({priceSuggestion.variablePercent}%)</span>
+                      </span>
+                      <span className="font-medium text-gray-700">
+                        {formatCurrency((priceSuggestion.suggested * priceSuggestion.variablePercent) / 100)}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between items-center p-2 bg-green-50 rounded border border-green-200">
+                      <span className="text-green-700 font-medium flex items-center gap-1">
+                        Lucro Líquido
+                        <span className="text-xs text-green-600">({priceSuggestion.marginPercent}%)</span>
+                      </span>
+                      <span className="font-bold text-green-700">
+                        {formatCurrency((priceSuggestion.suggested * priceSuggestion.marginPercent) / 100)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Formula Details */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="flex items-start gap-2">
+                    <Info size={16} className="text-blue-600 mt-0.5 flex-shrink-0" />
+                    <div className="text-xs text-blue-900 whitespace-pre-line leading-relaxed">
+                      {priceSuggestion.breakdown}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Comparação com preço atual */}
+                {formData.currentPrice > 0 && (
+                  <div className="bg-gray-50 rounded-lg p-3 text-sm">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Preço Atual:</span>
+                      <span className="font-bold text-gray-900">{formatCurrency(formData.currentPrice)}</span>
+                    </div>
+                    <div className="flex justify-between items-center mt-1">
+                      <span className="text-gray-600">Diferença:</span>
+                      <span className={`font-bold ${priceSuggestion.suggested > formData.currentPrice ? 'text-green-600' : 'text-red-600'}`}>
+                        {priceSuggestion.suggested > formData.currentPrice ? '+' : ''}
+                        {formatCurrency(priceSuggestion.suggested - formData.currentPrice)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer - Actions */}
+              <div className="p-6 bg-gray-50 border-t border-gray-100 flex gap-3">
+                <button
+                  onClick={() => setPriceModalOpen(false)}
+                  className="flex-1 py-3 border border-gray-300 rounded-lg hover:bg-white font-medium text-gray-700 transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={applyPriceSuggestion}
+                  className="flex-1 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 font-bold transition shadow-sm flex items-center justify-center gap-2"
+                >
+                  <DollarSign size={18} />
+                  Aplicar Preço
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Modal Edição/Criação - REDESENHADO */}
+      {
+        isModalOpen && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl my-8">
+              <form onSubmit={handleSubmit} className="flex flex-col">
+                {/* Header */}
+                <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-orange-50 to-red-50">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h3 className="text-2xl font-bold text-gray-900">{editingId ? '✏️ Editar' : '✨ Novo'} Produto</h3>
+                      <p className="text-sm text-gray-500 mt-1">Preencha os dados e otimize com IA</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsModalOpen(false)}
+                      className="text-gray-400 hover:text-gray-600 transition"
+                    >
+                      <X size={24} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-6 space-y-6 overflow-y-auto max-h-[70vh]">
+                  {/* Informações Básicas */}
+                  <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+                    <h4 className="text-sm font-bold text-gray-700 mb-4 flex items-center gap-2">
+                      <div className="w-6 h-6 bg-orange-100 rounded-lg flex items-center justify-center">
+                        <Info size={14} className="text-orange-600" />
+                      </div>
+                      Informações Básicas
+                    </h4>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Nome do Produto *</label>
+                        <input
+                          required
+                          type="text"
+                          value={formData.name}
+                          onChange={e => setFormData({ ...formData, name: e.target.value })}
+                          placeholder="Ex: X-Bacon Classic"
+                          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none bg-white text-gray-900 transition"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Categoria</label>
+                        <select
+                          value={formData.category}
+                          onChange={e => setFormData({ ...formData, category: e.target.value })}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none bg-white text-gray-900 transition"
+                        >
+                          <option value="">Sem categoria</option>
+                          {categories.map(cat => (
+                            <option key={cat} value={cat}>{cat}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Descrição com IA */}
+                    <div className="mt-4">
+                      <div className="flex justify-between items-center mb-2">
+                        <label className="block text-sm font-medium text-gray-700">Descrição para Vendas</label>
+                        <PlanGuard feature="aiConsultant" showLock={true}>
+                          <button
+                            type="button"
+                            onClick={handleGenerateDescription}
+                            disabled={!formData.name || isAiDescLoading}
+                            className="text-xs flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 transition font-medium shadow-sm"
+                          >
+                            {isAiDescLoading ? <Loader size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                            Gerar com IA
+                          </button>
+                        </PlanGuard>
+                      </div>
+                      <textarea
+                        rows={3}
+                        placeholder="Uma descrição vendedora que desperta o apetite..."
+                        value={formData.description}
+                        onChange={e => setFormData({ ...formData, description: e.target.value })}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none bg-white text-gray-900 resize-none transition"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Preço */}
+                  <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-xl p-5 shadow-sm">
+                    <h4 className="text-sm font-bold text-gray-700 mb-4 flex items-center gap-2">
+                      <div className="w-6 h-6 bg-green-100 rounded-lg flex items-center justify-center">
+                        <DollarSign size={14} className="text-green-600" />
+                      </div>
+                      Precificação
+                    </h4>
+
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <div className="flex-1">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Preço de Venda (R$) *</label>
+                        <input
+                          required
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={formData.currentPrice}
+                          onChange={e => setFormData({ ...formData, currentPrice: parseFloat(e.target.value) })}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none bg-white text-gray-900 font-bold text-lg transition"
+                        />
+                      </div>
+                      <div className="flex items-end">
+                        <PlanGuard feature="aiConsultant" showLock={true} fallback={
+                          <button
+                            type="button"
+                            disabled
+                            className="w-full sm:w-auto px-6 py-3 bg-gray-300 text-gray-500 font-bold rounded-xl cursor-not-allowed flex items-center justify-center gap-2 opacity-70"
+                          >
+                            <Sparkles size={18} />
+                            Sugerir Preço (Pro)
+                          </button>
+                        }>
+                          <button
+                            type="button"
+                            onClick={handleSuggestPrice}
+                            className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-bold rounded-xl hover:from-green-700 hover:to-emerald-700 shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2"
+                          >
+                            <Sparkles size={18} className="text-yellow-300" />
+                            Sugerir Preço
+                          </button>
+                        </PlanGuard>
+                      </div>
+                    </div>
+                    <p className="text-xs text-green-700 mt-2 flex items-center gap-1">
+                      <Info size={12} />
+                      A IA calcula considerando todos os custos e aplica estratégias de preço
+                    </p>
+                  </div>
+
+                  {/* Composição/Receita */}
+                  <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+                    <h4 className="text-sm font-bold text-gray-700 mb-4 flex items-center gap-2">
+                      <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">
+                        <Calculator size={14} className="text-blue-600" />
+                      </div>
+                      Composição (Ingredientes)
+                    </h4>
+
+                    {/* Adder */}
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                      <select
+                        value={newIngredientId}
+                        onChange={e => {
+                          const ing = ingredients.find(i => i.id === e.target.value);
+                          setNewIngredientId(e.target.value);
+                          if (ing) {
+                            setNewIngredientUnit(ing.purchaseUnit === 'l' ? 'ml' : (ing.purchaseUnit === 'kg' ? 'g' : 'un'));
+                          }
+                        }}
+                        className="sm:col-span-6 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 transition"
+                      >
+                        <option value="">Selecione um ingrediente...</option>
+                        {ingredients.map(i => (
+                          <option key={i.id} value={i.id}>{i.name}</option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        placeholder="Quantidade"
+                        value={newIngredientQty || ''}
+                        onChange={e => setNewIngredientQty(parseFloat(e.target.value))}
+                        className="sm:col-span-3 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 transition"
+                      />
+                      <select
+                        value={newIngredientUnit}
+                        onChange={e => setNewIngredientUnit(e.target.value as UnitType)}
+                        className="sm:col-span-2 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 transition"
+                      >
+                        <option value="g">g</option>
+                        <option value="ml">ml</option>
+                        <option value="un">un</option>
+                        <option value="kg">kg</option>
+                        <option value="l">l</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={addIngredientToRecipe}
+                        disabled={!newIngredientId || !newIngredientQty}
+                        className="sm:col-span-1 bg-blue-600 text-white px-3 py-2 rounded-lg text-sm disabled:opacity-50 hover:bg-blue-700 font-medium transition flex items-center justify-center"
+                      >
+                        <Plus size={16} />
+                      </button>
+                    </div>
+
+                    {/* Lista de ingredientes */}
+                    <div className="space-y-2">
+                      {formData.recipe.length === 0 && (
+                        <div className="text-center py-6 text-gray-400 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                          <Calculator size={32} className="mx-auto mb-2 opacity-30" />
+                          <p className="text-sm">Nenhum ingrediente adicionado</p>
+                        </div>
+                      )}
+                      {formData.recipe.map((item, idx) => {
+                        const ingName = ingredients.find(i => i.id === item.ingredientId)?.name || 'Desconhecido';
+                        return (
+                          <div key={idx} className="flex justify-between items-center bg-white p-3 rounded-lg border border-gray-200 hover:border-blue-300 transition group">
+                            <span className="text-gray-900 font-medium">{ingName}</span>
+                            <div className="flex items-center gap-3">
+                              <span className="font-mono bg-blue-50 px-3 py-1 rounded-lg text-sm text-blue-700 font-bold">
+                                {item.quantityUsed} {item.unitUsed}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => removeRecipeItem(idx)}
+                                className="text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Modo de Preparo */}
+                  <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+                    <div className="flex justify-between items-center mb-4">
+                      <h4 className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                        <div className="w-6 h-6 bg-indigo-100 rounded-lg flex items-center justify-center">
+                          <ChevronRight size={14} className="text-indigo-600" />
+                        </div>
+                        Modo de Preparo
+                      </h4>
+                      <PlanGuard feature="aiConsultant" showLock={true}>
+                        <button
+                          type="button"
+                          onClick={handleOptimizePrepMethod}
+                          disabled={!formData.name || isAiPrepLoading}
+                          className="text-xs flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-lg hover:from-blue-600 hover:to-indigo-600 disabled:opacity-50 transition font-medium shadow-sm"
+                        >
+                          {isAiPrepLoading ? <Loader size={12} className="animate-spin" /> : <Wand2 size={12} />}
+                          Padronizar com IA
+                        </button>
+                      </PlanGuard>
+                    </div>
+                    <textarea
+                      rows={6}
+                      placeholder="1. Grelhe a carne...&#10;2. Toste o pão...&#10;3. Monte o sanduíche..."
+                      value={formData.preparationMethod}
+                      onChange={e => setFormData({ ...formData, preparationMethod: e.target.value })}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none bg-white text-gray-900 resize-none font-mono text-sm transition"
+                    />
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="p-6 border-t border-gray-100 bg-gray-50 flex justify-end gap-3 rounded-b-2xl">
+                  <button
+                    type="button"
+                    onClick={() => setIsModalOpen(false)}
+                    className="px-6 py-3 border border-gray-300 rounded-xl hover:bg-white transition bg-white text-gray-700 font-medium"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-6 py-3 bg-orange-600 text-white rounded-xl hover:bg-orange-700 transition font-bold shadow-sm flex items-center gap-2"
+                  >
+                    <Calculator size={18} />
+                    Salvar Produto
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )
+      }
+    </div >
   );
 };
 

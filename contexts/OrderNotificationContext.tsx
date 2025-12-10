@@ -67,7 +67,14 @@ export const OrderNotificationProvider: React.FC<{ children: React.ReactNode }> 
         };
     }, []);
 
-    // Subscribe to new orders
+    const currentVisibleOrderIdRef = useRef<string | null>(null);
+
+    // Sync ref with state
+    useEffect(() => {
+        currentVisibleOrderIdRef.current = newOrder?.id || null;
+    }, [newOrder]);
+
+    // Subscribe to new orders AND updates
     useEffect(() => {
         if (!user?.id) {
             console.warn('⚠️ No user logged in - notifications disabled');
@@ -102,26 +109,79 @@ export const OrderNotificationProvider: React.FC<{ children: React.ReactNode }> 
                     }
                     lastOrderIdRef.current = basicOrder.id;
 
-                    // IMPORTANTE: Só mostrar popup para pedidos do CARDÁPIO VIRTUAL
-                    // Pedidos de mesa NÃO devem mostrar popup
-                    if (!basicOrder.delivery_type) {
-                        console.log('⏭️ PEDIDO DE MESA - Popup não exibido (delivery_type ausente)');
+                    // FILTRAGEM DE NOTIFICAÇÕES
+                    // Não mostrar popup para pedidos criados localmente pelo operador (PDV ou Manual)
+                    if (['pdv', 'manual'].includes(basicOrder.integration_source)) {
+                        console.log(`⏭️ Pedido Interno (${basicOrder.integration_source}) - Popup ignorado`);
                         return;
                     }
 
-                    console.log('📢 Processing new order from VIRTUAL MENU:', {
+                    // Se for pedido de mesa (sem delivery_type) e não for de uma origem externa conhecida (ex: 'online_menu'), ignorar também.
+                    // Pedidos do iFood ou Delivery SEMPRE passam.
+                    const isInternalTableOrder = !basicOrder.delivery_type && !['ifood', 'online_menu'].includes(basicOrder.integration_source);
+
+                    if (isInternalTableOrder) {
+                        console.log('⏭️ Pedido de Mesa (Sem origem externa) - Popup não exibido');
+                        return;
+                    }
+
+                    console.log('📢 Processing new order:', {
                         id: basicOrder.id,
                         customer: basicOrder.customer_name,
                         amount: basicOrder.total_amount,
                         status: basicOrder.status,
-                        delivery_type: basicOrder.delivery_type
+                        source: basicOrder.integration_source
                     });
 
-                    // Fetch complete order data with items
-                    await fetchCompleteOrderData(basicOrder.id);
+                    // 1. Try to construct order from payload first (faster & works for iFood webhooks)
+                    let orderFromPayload: Order | null = null;
+                    if (basicOrder.external_metadata && basicOrder.external_metadata.items) {
+                        const mappedItems = basicOrder.external_metadata.items.map((i: any) => ({
+                            product_id: i.externalCode || 'unknown',
+                            product_name: i.name,
+                            quantity: i.quantity,
+                            price: i.unitPrice,
+                            total: i.totalPrice
+                        }));
 
-                    // Play notification sound IMMEDIATELY
-                    playNotificationSound();
+                        orderFromPayload = {
+                            ...basicOrder,
+                            items: mappedItems,
+                            phone: basicOrder.external_metadata?.customer?.phone?.number || basicOrder.phone,
+                            delivery_address: basicOrder.external_metadata?.delivery?.deliveryAddress?.formattedAddress || basicOrder.delivery_address
+                        };
+                        console.log('✅ Constructed order directly from payload metadata');
+                    }
+
+                    if (orderFromPayload) {
+                        setNewOrder(orderFromPayload);
+                        playNotificationSound();
+                    } else {
+                        // 2. If no metadata, fetch complete order data with items from DB
+                        await fetchCompleteOrderData(basicOrder.id);
+                    }
+                }
+            )
+            .on(
+                'postgres_changes',
+                {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'orders',
+                    filter: `user_id=eq.${user.id}`
+                },
+                (payload) => {
+                    const updatedOrder = payload.new as any;
+                    console.log('🔄 Order updated:', updatedOrder.id, updatedOrder.status);
+
+                    // Se o pedido atual na tela foi atualizado para algo diferente de 'pending'
+                    // significa que ele foi aceito ou rejeitado em outra aba
+                    if (currentVisibleOrderIdRef.current === updatedOrder.id) {
+                        if (updatedOrder.status !== 'pending' && updatedOrder.status !== 'payment_pending') {
+                            console.log('✅ Pedido já tratado em outra aba. Fechando modal.');
+                            setNewOrder(null);
+                        }
+                    }
                 }
             )
             .subscribe((status, err) => {
@@ -185,6 +245,9 @@ export const OrderNotificationProvider: React.FC<{ children: React.ReactNode }> 
             console.log('✅ Complete order data fetched:', completeOrder);
             console.log('🎬 SHOWING MODAL NOW!');
             setNewOrder(completeOrder);
+
+            // Play sound ONLY when showing the modal
+            playNotificationSound();
 
         } catch (error) {
             console.error('❌ Error in fetchCompleteOrderData:', error);

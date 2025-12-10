@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
     CreditCard, Banknote, Smartphone, DollarSign,
-    X, Plus, Percent, Award, Gift, Check, AlertCircle, Receipt, Calculator, ShoppingCart, Music
+    X, Plus, Percent, Award, Gift, Check, AlertCircle, Receipt, Calculator, ShoppingCart, Music,
+    ChevronDown, ChevronUp
 } from 'lucide-react';
 import { POSPayment, PaymentMethod, Customer, OrderItem } from '../types';
 
@@ -46,6 +47,7 @@ const POSPaymentModal: React.FC<POSPaymentModalProps> = ({
 
     // Dinheiro
     const [cashGiven, setCashGiven] = useState('');
+    const [showExtras, setShowExtras] = useState(false);
 
     const paymentMethods: { id: PaymentMethod; name: string; icon: any; color: string }[] = [
         { id: 'money', name: 'Dinheiro', icon: Banknote, color: 'from-green-500 to-emerald-600' },
@@ -113,9 +115,11 @@ const POSPaymentModal: React.FC<POSPaymentModalProps> = ({
         setPayments(payments.filter((_, i) => i !== index));
     };
 
-    // Atalho: Pagar total com método selecionado
-    const payFullWithMethod = (method: PaymentMethod) => {
-        setPayments([{ method, amount: finalTotal }]);
+    // Atalho: Pagar restante com método selecionado
+    const payRemainingWithMethod = (method: PaymentMethod) => {
+        if (remaining <= 0) return;
+        setPayments([...payments, { method, amount: remaining }]);
+        setCurrentAmount('');
     };
 
     // Confirmar
@@ -157,115 +161,26 @@ const POSPaymentModal: React.FC<POSPaymentModalProps> = ({
                 </div>
 
                 <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar">
-                    {/* Resumo do Pedido */}
-                    <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl p-5 border border-gray-200">
-                        <h3 className="text-gray-900 font-bold mb-4 flex items-center gap-2">
-                            <ShoppingCart className="w-5 h-5 text-orange-600" />
-                            Resumo do Pedido
-                        </h3>
-                        <div className="flex justify-between text-gray-900 font-bold text-lg border-b border-gray-300 pb-2 mb-2">
-                            <span>Subtotal Itens:</span>
-                            <span>R$ {subtotal.toFixed(2)}</span>
-                        </div>
-                        {/* Lista minimizada se quiser */}
-                    </div>
 
-                    {/* Descontos e Taxas (Grid 2x2 em Desktop) */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                        {/* Desconto */}
-                        <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm">
-                            <label className="text-gray-700 text-sm font-semibold mb-3 flex items-center gap-2">
-                                <Percent className="w-4 h-4 text-red-600" />
-                                Desconto
-                            </label>
-                            <div className="space-y-2">
-                                <input
-                                    type="number"
-                                    value={discount}
-                                    onChange={(e) => setDiscount(Math.max(0, parseFloat(e.target.value) || 0))}
-                                    className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                                />
-                                <div className="flex gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => setDiscountType('value')}
-                                        className={`flex-1 py-2 rounded-lg text-xs font-bold ${discountType === 'value' ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-600'}`}
-                                    >R$</button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setDiscountType('percent')}
-                                        className={`flex-1 py-2 rounded-lg text-xs font-bold ${discountType === 'percent' ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-600'}`}
-                                    >%</button>
-                                </div>
-                            </div>
-                            {discount > 0 && <p className="text-red-600 font-bold text-sm mt-2">- R$ {discountValue.toFixed(2)}</p>}
-                        </div>
-
-                        {/* Taxa de Serviço */}
-                        <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm">
-                            <label className="text-gray-700 text-sm font-semibold mb-3 flex items-center gap-2">
-                                <DollarSign className="w-4 h-4 text-blue-600" />
-                                Taxa Serviço (%)
-                            </label>
-                            <input
-                                type="number"
-                                value={serviceCharge}
-                                onChange={(e) => setServiceCharge(Math.max(0, parseFloat(e.target.value) || 0))}
-                                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                            />
-                            {serviceCharge > 0 && <p className="text-green-600 font-bold text-sm mt-2">+ R$ {serviceChargeValue.toFixed(2)}</p>}
-                        </div>
-
-                        {/* Gorjeta */}
-                        <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm">
-                            <label className="text-gray-700 text-sm font-semibold mb-3 flex items-center gap-2">
-                                <Gift className="w-4 h-4 text-purple-600" />
-                                Gorjeta (R$)
-                            </label>
-                            <input
-                                type="number"
-                                value={tip}
-                                onChange={(e) => setTip(Math.max(0, parseFloat(e.target.value) || 0))}
-                                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                            />
-                            {tip > 0 && <p className="text-green-600 font-bold text-sm mt-2">+ R$ {tip.toFixed(2)}</p>}
-                        </div>
-
-                        {/* Couvert */}
-                        <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm">
-                            <label className="text-gray-700 text-sm font-semibold mb-3 flex items-center gap-2">
-                                <Music className="w-4 h-4 text-pink-600" />
-                                Couvert (Total R$)
-                            </label>
-                            <input
-                                type="number"
-                                value={couvert}
-                                onChange={(e) => setCouvert(Math.max(0, parseFloat(e.target.value) || 0))}
-                                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                            />
-                            {couvert > 0 && <p className="text-pink-600 font-bold text-sm mt-2">+ R$ {couvert.toFixed(2)}</p>}
-                        </div>
-                    </div>
-
-                    {/* Total Final DESTAQUE */}
-                    <div className="bg-gradient-to-br from-orange-500 to-red-600 rounded-2xl p-6 shadow-xl text-white">
+                    {/* 1. Total Final DESTAQUE (Moved to top) */}
+                    <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-6 shadow-xl text-white">
                         <div className="flex flex-col md:flex-row justify-between items-center gap-4">
                             <div>
-                                <h3 className="text-lg font-semibold opacity-90 mb-1">Total a Pagar</h3>
+                                <h3 className="text-gray-400 font-medium mb-1 uppercase text-xs tracking-wider">Total a Pagar</h3>
                                 <div className="text-5xl font-black tracking-tight drop-shadow-md">
                                     R$ {finalTotal.toFixed(2)}
                                 </div>
                             </div>
 
                             {totalPaid > 0 && (
-                                <div className="bg-white/20 backdrop-blur-md rounded-xl p-4 min-w-[200px] w-full md:w-auto">
-                                    <div className="flex justify-between mb-1">
+                                <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 min-w-[200px] w-full md:w-auto border border-white/10">
+                                    <div className="flex justify-between mb-1 text-gray-300 text-sm">
                                         <span>Pago:</span>
-                                        <span className="font-bold">R$ {totalPaid.toFixed(2)}</span>
+                                        <span className="font-bold text-white">R$ {totalPaid.toFixed(2)}</span>
                                     </div>
-                                    <div className="flex justify-between font-bold text-lg border-t border-white/30 pt-1 mt-1">
+                                    <div className="flex justify-between font-bold text-lg border-t border-white/10 pt-2 mt-1">
                                         <span>Restante:</span>
-                                        <span className={remaining === 0 ? 'text-green-300' : 'text-yellow-300'}>
+                                        <span className={remaining === 0 ? 'text-green-400' : 'text-yellow-400'}>
                                             R$ {remaining.toFixed(2)}
                                         </span>
                                     </div>
@@ -274,16 +189,18 @@ const POSPaymentModal: React.FC<POSPaymentModalProps> = ({
                         </div>
                     </div>
 
-                    {/* Área de Pagamento (Métodos e Input) */}
-                    <div className="space-y-4">
-                        {/* Seleção de Método */}
-                        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                    {/* 2. Seleção de Método (More compact) */}
+                    <div>
+                        <h3 className="text-gray-900 font-bold mb-3 flex items-center gap-2 text-sm">
+                            Selecione a Forma de Pagamento
+                        </h3>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                             {paymentMethods.map(method => (
                                 <button
                                     key={method.id}
                                     onClick={() => setCurrentMethod(method.id)}
-                                    className={`flex-1 min-w-[100px] p-4 rounded-xl border-2 transition-all flex flex-col items-center justify-center gap-2 ${currentMethod === method.id
-                                        ? 'border-orange-500 bg-orange-50 shadow-md transform scale-105'
+                                    className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center justify-center gap-2 ${currentMethod === method.id
+                                        ? 'border-orange-500 bg-orange-50 shadow-md transform scale-[1.02]'
                                         : 'border-gray-200 bg-white hover:bg-gray-50'
                                         }`}
                                 >
@@ -296,111 +213,220 @@ const POSPaymentModal: React.FC<POSPaymentModalProps> = ({
                                 </button>
                             ))}
                         </div>
+                    </div>
 
-                        {/* Input Valor e Botão Adicionar */}
-                        <div className="flex flex-col md:flex-row gap-4 items-stretch">
-                            {/* Input Dinheiro Especial */}
-                            {currentMethod === 'money' ? (
-                                <div className="flex-1 bg-green-50 border-2 border-green-200 rounded-xl p-4">
-                                    <label className="text-xs font-bold text-green-700 uppercase mb-2 block">Valor Recebido</label>
-                                    <div className="flex gap-3 mb-3">
-                                        {[50, 100, 200].map(val => (
-                                            <button key={val} onClick={() => setCashGiven(val.toString())} className="bg-white border border-green-200 text-green-700 font-bold py-1 px-3 rounded hover:bg-green-100">
-                                                {val}
-                                            </button>
-                                        ))}
-                                    </div>
-                                    <div className="flex gap-4">
-                                        <input
-                                            type="number"
-                                            placeholder="R$ 0,00"
-                                            value={cashGiven}
-                                            onChange={(e) => setCashGiven(e.target.value)}
-                                            className="flex-1 text-2xl font-bold bg-white border border-green-300 rounded-lg px-4 py-2 text-green-900 focus:ring-2 focus:ring-green-500 outline-none"
-                                        />
-                                        {remaining > 0 && (
-                                            <button
-                                                onClick={() => {
-                                                    const cashVal = parseFloat(cashGiven);
-                                                    if (isNaN(cashVal) || cashVal <= 0) {
-                                                        alert('Digite um valor válido');
-                                                        return;
-                                                    }
-                                                    // Registra apenas o necessário para quitar (ou o valor parcial se for menor)
-                                                    const amountToRegister = Math.min(cashVal, remaining);
-                                                    setPayments([...payments, { method: 'money', amount: amountToRegister }]);
-                                                    setCashGiven('');
-                                                }}
-                                                className="bg-green-600 text-white font-bold px-6 rounded-lg hover:bg-green-700 shadow-lg shadow-green-200"
-                                            >
-                                                Confirmar
-                                            </button>
-                                        )}
-                                    </div>
-                                    {/* Troco Visual */}
-                                    {cashGiven && parseFloat(cashGiven) > (remaining || finalTotal) && (
-                                        <div className="mt-3 text-right">
-                                            <span className="text-sm text-green-700 font-bold uppercase">Troco: </span>
-                                            <span className="text-2xl font-black text-green-600">
-                                                R$ {(parseFloat(cashGiven) - (payments.length > 0 ? remaining : finalTotal)).toFixed(2)}
-                                            </span>
+                    {/* 3. Área de Pagamento (Input) */}
+                    <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
+                        {currentMethod === 'money' ? (
+                            <div className="space-y-4">
+                                <div className="flex flex-col sm:flex-row gap-4">
+                                    <div className="flex-1">
+                                        <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Sugestões</label>
+                                        <div className="flex gap-2">
+                                            {[50, 100, 200].map(val => (
+                                                <button
+                                                    key={val}
+                                                    onClick={() => setCashGiven(val.toString())}
+                                                    className="flex-1 bg-green-50 border border-green-200 text-green-700 font-bold py-2 rounded-lg hover:bg-green-100 transition-colors"
+                                                >
+                                                    {val}
+                                                </button>
+                                            ))}
                                         </div>
-                                    )}
-                                </div>
-                            ) : (
-                                <div className="flex-1 flex gap-3">
-                                    <div className="relative flex-1">
-                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold">R$</span>
-                                        <input
-                                            type="number"
-                                            placeholder="0,00"
-                                            value={currentAmount}
-                                            onChange={(e) => setCurrentAmount(e.target.value)}
-                                            onKeyDown={(e) => e.key === 'Enter' && addPayment()}
-                                            className="w-full h-full pl-12 pr-4 text-2xl font-bold bg-white border-2 border-gray-200 rounded-xl focus:border-orange-500 focus:ring-0 outline-none transition-colors"
-                                        />
                                     </div>
+                                    <div className="flex-1">
+                                        <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Valor Recebido</label>
+                                        <div className="relative">
+                                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">R$</span>
+                                            <input
+                                                type="number"
+                                                placeholder="0,00"
+                                                value={cashGiven}
+                                                onChange={(e) => setCashGiven(e.target.value)}
+                                                className="w-full text-2xl font-bold bg-gray-50 border border-gray-200 rounded-xl pl-12 pr-4 py-3 text-gray-900 focus:ring-2 focus:ring-green-500 outline-none transition-all"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {remaining > 0 && (
+                                    <button
+                                        onClick={() => {
+                                            const cashVal = parseFloat(cashGiven);
+                                            if (isNaN(cashVal) || cashVal <= 0) {
+                                                alert('Digite um valor válido');
+                                                return;
+                                            }
+                                            const amountToRegister = Math.min(cashVal, remaining);
+                                            setPayments([...payments, { method: 'money', amount: amountToRegister }]);
+                                            setCashGiven('');
+                                        }}
+                                        className="w-full py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 shadow-lg shadow-green-100 active:scale-[0.98] transition-all"
+                                    >
+                                        Confirmar Pagamento em Dinheiro
+                                    </button>
+                                )}
+
+                                {/* Troco Visual */}
+                                {cashGiven && parseFloat(cashGiven) > (payments.length > 0 ? remaining : finalTotal) && (
+                                    <div className="bg-green-50 p-4 rounded-xl border border-green-200 flex justify-between items-center">
+                                        <span className="text-green-800 font-bold uppercase text-sm">Troco a Devolver</span>
+                                        <span className="text-3xl font-black text-green-600">
+                                            R$ {(parseFloat(cashGiven) - (payments.length > 0 ? remaining : finalTotal)).toFixed(2)}
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="flex flex-col sm:flex-row gap-4 items-center">
+                                <div className="relative flex-1 w-full">
+                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold">R$</span>
+                                    <input
+                                        type="number"
+                                        placeholder={remaining.toFixed(2)}
+                                        value={currentAmount}
+                                        onChange={(e) => setCurrentAmount(e.target.value)}
+                                        onKeyDown={(e) => e.key === 'Enter' && addPayment()}
+                                        className="w-full pl-12 pr-4 py-3 text-2xl font-bold bg-gray-50 border border-gray-200 rounded-xl focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none transition-all"
+                                    />
+                                </div>
+                                <div className="flex gap-2 w-full sm:w-auto">
                                     <button
                                         onClick={addPayment}
                                         disabled={!currentAmount}
-                                        className="bg-gray-900 text-white font-bold px-8 rounded-xl hover:bg-black transition-colors disabled:opacity-50"
+                                        className="flex-1 sm:flex-none bg-gray-900 text-white font-bold px-8 py-3 rounded-xl hover:bg-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         Adicionar
                                     </button>
+                                    {remaining > 0 && (
+                                        <button
+                                            onClick={() => payRemainingWithMethod(currentMethod)}
+                                            className="flex-1 sm:flex-none bg-orange-100 text-orange-700 font-bold px-6 py-3 rounded-xl hover:bg-orange-200 transition-colors whitespace-nowrap"
+                                        >
+                                            Valor Restante
+                                        </button>
+                                    )}
                                 </div>
-                            )}
-
-                            {/* Botão Pagar Restante Rápido */}
-                            {remaining > 0 && currentMethod !== 'money' && (
-                                <button
-                                    onClick={() => payFullWithMethod(currentMethod)}
-                                    className="bg-orange-100 text-orange-700 font-bold px-6 py-4 rounded-xl hover:bg-orange-200 transition-colors whitespace-nowrap"
-                                >
-                                    Pagar Restante
-                                </button>
-                            )}
-                        </div>
+                            </div>
+                        )}
                     </div>
 
-                    {/* Lista de Pagamentos */}
+                    {/* 4. Lista de Pagamentos Já Efetuados */}
                     {payments.length > 0 && (
-                        <div className="space-y-2">
+                        <div className="space-y-3">
+                            <h3 className="text-gray-900 font-bold text-sm">Pagamentos Adicionados</h3>
                             {payments.map((p, idx) => (
-                                <div key={idx} className="flex justify-between items-center bg-gray-50 p-3 rounded-lg border border-gray-200">
+                                <div key={idx} className="flex justify-between items-center bg-gray-50 p-4 rounded-xl border border-gray-200">
                                     <div className="flex items-center gap-3">
-                                        <div className="w-8 h-8 rounded bg-white flex items-center justify-center border border-gray-200 shadow-sm">
-                                            {React.createElement(paymentMethods.find(m => m.id === p.method)?.icon || CreditCard, { size: 16 })}
+                                        <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center border border-gray-200 shadow-sm text-gray-600">
+                                            {React.createElement(paymentMethods.find(m => m.id === p.method)?.icon || CreditCard, { size: 20 })}
                                         </div>
-                                        <span className="font-bold text-gray-700 capitalize">{paymentMethods.find(m => m.id === p.method)?.name}</span>
+                                        <div>
+                                            <span className="font-bold text-gray-800 capitalize block leading-tight">{paymentMethods.find(m => m.id === p.method)?.name}</span>
+                                            <span className="text-xs text-gray-500">Registrado</span>
+                                        </div>
                                     </div>
                                     <div className="flex items-center gap-4">
-                                        <span className="font-bold text-gray-900">R$ {p.amount.toFixed(2)}</span>
-                                        <button onClick={() => removePayment(idx)} className="text-red-500 hover:text-red-700"><X size={16} /></button>
+                                        <span className="font-bold text-gray-900 text-lg">R$ {p.amount.toFixed(2)}</span>
+                                        <button onClick={() => removePayment(idx)} className="w-8 h-8 flex items-center justify-center rounded-full bg-red-50 text-red-500 hover:bg-red-100 hover:text-red-700 transition-colors">
+                                            <X size={16} />
+                                        </button>
                                     </div>
                                 </div>
                             ))}
                         </div>
                     )}
+
+                    {/* 5. Descontos e Taxas (Collapsible at bottom) */}
+                    <div className="border-t border-gray-200 pt-4">
+                        <button
+                            onClick={() => setShowExtras(!showExtras)}
+                            className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors group"
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-white rounded-lg border border-gray-200 text-orange-600 group-hover:border-orange-200 transition-colors">
+                                    <Percent size={18} />
+                                </div>
+                                <div className="text-left">
+                                    <span className="font-bold text-gray-700 block">Descontos e Taxas Adicionais</span>
+                                    <span className="text-xs text-gray-500">Serviço, Gorjeta, Couvert, Descontos manuais</span>
+                                </div>
+                            </div>
+                            {showExtras ? <ChevronUp className="text-gray-400" /> : <ChevronDown className="text-gray-400" />}
+                        </button>
+
+                        {showExtras && (
+                            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                                <div className="bg-white rounded-xl p-4 border border-gray-200">
+                                    <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Resumo Original</label>
+                                    <div className="flex justify-between text-gray-900 font-bold mb-1">
+                                        <span>Subtotal Itens:</span>
+                                        <span>R$ {subtotal.toFixed(2)}</span>
+                                    </div>
+                                </div>
+
+                                {/* Desconto */}
+                                <div className="bg-white rounded-xl p-4 border border-gray-200">
+                                    <label className="text-xs font-bold text-gray-500 uppercase mb-2 block text-red-600">Desconto</label>
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="number"
+                                            value={discount}
+                                            onChange={(e) => setDiscount(Math.max(0, parseFloat(e.target.value) || 0))}
+                                            className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-100"
+                                        />
+                                        <div className="flex bg-gray-100 rounded-lg p-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => setDiscountType('value')}
+                                                className={`px-3 rounded-md text-xs font-bold transition-all ${discountType === 'value' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}
+                                            >R$</button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setDiscountType('percent')}
+                                                className={`px-3 rounded-md text-xs font-bold transition-all ${discountType === 'percent' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}
+                                            >%</button>
+                                        </div>
+                                    </div>
+                                    {discount > 0 && <p className="text-red-600 font-bold text-xs mt-1 text-right">- R$ {discountValue.toFixed(2)}</p>}
+                                </div>
+
+                                {/* Taxa Serviço */}
+                                <div className="bg-white rounded-xl p-4 border border-gray-200">
+                                    <label className="text-xs font-bold text-gray-500 uppercase mb-2 block text-blue-600">Taxa de Serviço (%)</label>
+                                    <input
+                                        type="number"
+                                        value={serviceCharge}
+                                        onChange={(e) => setServiceCharge(Math.max(0, parseFloat(e.target.value) || 0))}
+                                        className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                                    />
+                                    {serviceCharge > 0 && <p className="text-blue-600 font-bold text-xs mt-1 text-right">+ R$ {serviceChargeValue.toFixed(2)}</p>}
+                                </div>
+
+                                {/* Gorjeta */}
+                                <div className="bg-white rounded-xl p-4 border border-gray-200">
+                                    <label className="text-xs font-bold text-gray-500 uppercase mb-2 block text-purple-600">Gorjeta (R$)</label>
+                                    <input
+                                        type="number"
+                                        value={tip}
+                                        onChange={(e) => setTip(Math.max(0, parseFloat(e.target.value) || 0))}
+                                        className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-100"
+                                    />
+                                </div>
+
+                                {/* Couvert */}
+                                <div className="bg-white rounded-xl p-4 border border-gray-200">
+                                    <label className="text-xs font-bold text-gray-500 uppercase mb-2 block text-pink-600">Couvert (Total R$)</label>
+                                    <input
+                                        type="number"
+                                        value={couvert}
+                                        onChange={(e) => setCouvert(Math.max(0, parseFloat(e.target.value) || 0))}
+                                        className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-100"
+                                    />
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {/* Footer Actions */}

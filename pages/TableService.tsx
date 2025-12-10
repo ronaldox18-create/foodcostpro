@@ -1,5 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../utils/supabaseClient';
 import { Product, OrderItem, POSPayment, Customer, Order } from '../types';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
@@ -166,7 +168,7 @@ const TableService: React.FC = () => {
 
             // Baixar estoque dos itens enviados para cozinha
             if (newItemsToPrint.length > 0) {
-                await handleStockUpdate(newItemsToPrint);
+                // await handleStockUpdate(newItemsToPrint); // REMOVIDO: updateOrder/addOrder já faz isso
             }
 
             setShowKitchenModal(true);
@@ -178,6 +180,25 @@ const TableService: React.FC = () => {
         }
     };
 
+    const { user } = useAuth(); // Needed to fetch cash register
+    const [cashRegisterId, setCashRegisterId] = useState<string | null>(null);
+
+    // Effect: Carregar Caixa Aberto
+    useEffect(() => {
+        const fetchCashRegister = async () => {
+            if (!user) return;
+            const { data } = await supabase
+                .from('cash_registers')
+                .select('id')
+                .eq('user_id', user.id)
+                .eq('status', 'open')
+                .maybeSingle();
+
+            if (data) setCashRegisterId(data.id);
+        };
+        fetchCashRegister();
+    }, [user]);
+
     const handleConfirmPayment = async (
         payments: POSPayment[],
         customer: Customer | null,
@@ -188,17 +209,47 @@ const TableService: React.FC = () => {
     ) => {
         if (!currentOrder?.id) return;
 
+        // 🔒 CRITICAL: Verificar estoque ANTES de fechar mesa
+        // Importante porque a mesa pode ter itens adicionados durante o atendimento
+        const { available, missingItems } = await checkStockAvailability(cart);
+
+        if (!available) {
+            alert(`❌ ESTOQUE INSUFICIENTE!\n\nNão é possível fechar a mesa. Itens em falta:\n\n${missingItems.join('\n')}\n\nReponha o estoque antes de continuar.`);
+            return;
+        }
+
+        // Validar se há caixa aberto para pagamentos em dinheiro
+        const hasCashPayment = payments.some(p => p.method === 'money');
+        if (hasCashPayment && !cashRegisterId) {
+            const proceed = window.confirm("⚠️ ATENÇÃO: Não há caixa aberto!\n\nEste pagamento em DINHEIRO não será registrado no fechamento de caixa.\n\nDeseja continuar mesmo assim?");
+            if (!proceed) return;
+        }
+
         const subtotal = cart.reduce((acc, item) => acc + item.total, 0);
         const serviceValue = (subtotal * serviceChargePercent) / 100;
         const finalTotalAmount = subtotal + serviceValue + tip + couvert - discount;
+
+        // Mapear pagamentos do modal para o formato do banco
+        // Se houver multiplos, salvamos como 'multiple' e os detalhes poderiam ir para outra tabela ou campo jsonb
+        // Mas por compatibilidade atual, usamos 'multiple' ou o método único.
+        // O ideal seria salvar os pagamentos detalhados.
+        // O AppContext deve tratar isso se o campo existir.
+
+        const primaryMethod = payments.length > 1 ? 'multiple' : payments[0].method;
 
         const updatedOrder: any = {
             ...currentOrder,
             status: 'completed',
             totalAmount: finalTotalAmount,
-            paymentMethod: payments.length > 1 ? 'multiple' : payments[0].method,
+            paymentMethod: primaryMethod,
             items: cart,
-            couvert: couvert
+            couvert: couvert,
+            // Campos adicionais
+            discount: discount,
+            serviceCharge: serviceValue,
+            tip: tip,
+            cash_register_id: cashRegisterId, // VINCULA AO CAIXA
+            change_given: 0 // Simplificacao
         };
 
         try {

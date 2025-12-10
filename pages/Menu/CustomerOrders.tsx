@@ -104,6 +104,7 @@ const CustomerOrders: React.FC = () => {
             ready: { label: 'Pronto', icon: CheckCircle, color: 'text-green-600', bgColor: 'bg-green-100' },
             delivered: { label: 'Saiu para Entrega', icon: Truck, color: 'text-blue-600', bgColor: 'bg-blue-100' },
             completed: { label: 'Concluído', icon: CheckCircle, color: 'text-green-600', bgColor: 'bg-green-100' },
+            canceled: { label: 'Cancelado', icon: XCircle, color: 'text-red-600', bgColor: 'bg-red-100' },
             cancelled: { label: 'Cancelado', icon: XCircle, color: 'text-red-600', bgColor: 'bg-red-100' }
         };
         return statusMap[status] || statusMap.pending;

@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { Ingredient, Product, AppSettings, FixedCost, Customer, Order, OrderItem, Table } from '../types';
 import { useAuth } from './AuthContext';
 import { supabase } from '../utils/supabaseClient';
-import NewOrderModal from '../components/NewOrderModal';
+
 
 interface AppContextType {
   ingredients: Ingredient[];
@@ -22,6 +22,8 @@ interface AppContextType {
   addProduct: (prod: Product) => Promise<void>;
   updateProduct: (prod: Product) => Promise<void>;
   deleteProduct: (id: string) => Promise<void>;
+  syncProductWithIfood: (product: Product) => Promise<{ success: boolean; message?: string }>;
+  syncCategoryWithIfood: (categoryName: string) => Promise<{ success: boolean; message?: string }>;
 
   addFixedCost: (cost: FixedCost) => Promise<void>;
   deleteFixedCost: (id: string) => Promise<void>;
@@ -45,6 +47,7 @@ interface AppContextType {
   checkStockAvailability: (items: OrderItem[]) => Promise<{ available: boolean; missingItems: string[] }>;
   fixTableStatuses: () => Promise<void>;
   refreshOrders: () => Promise<void>;
+  activeCashRegisterId: string | null;
 }
 
 const defaultSettings: AppSettings = {
@@ -68,6 +71,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [categories, setCategories] = useState<string[]>([]);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [loading, setLoading] = useState(false);
+  const [activeCashRegisterId, setActiveCashRegisterId] = useState<string | null>(null);
 
   const refreshOrders = async () => {
     if (!user) return;
@@ -132,6 +136,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           estimatedMonthlyBilling: settingsData.estimated_monthly_billing
         });
 
+        // Fetch Active Cash Register
+        const { data: cashData } = await supabase
+          .from('cash_registers')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('status', 'open')
+          .maybeSingle(); // Use maybeSingle to avoid 406 error if no open register
+
+        if (cashData) {
+          setActiveCashRegisterId(cashData.id);
+        } else {
+          setActiveCashRegisterId(null);
+        }
+
         const { data: ingData } = await supabase.from('ingredients').select('*').eq('user_id', user.id);
         if (ingData) setIngredients(ingData.map(i => ({ ...i, purchaseUnit: i.purchase_unit, purchaseQuantity: i.purchase_quantity, purchasePrice: i.purchase_price, yieldPercent: i.yield_percent, currentStock: i.current_stock, minStock: i.min_stock })));
 
@@ -139,7 +157,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (prodData) {
           setProducts(prodData.map(p => ({
             id: p.id, name: p.name, category: p.category, description: p.description, currentPrice: p.current_price, preparationMethod: p.preparation_method,
-            recipe: p.product_ingredients.map((pi: any) => ({ ingredientId: pi.ingredient_id, quantityUsed: pi.quantity_used, unitUsed: pi.unit_used }))
+            recipe: p.product_ingredients.map((pi: any) => ({ ingredientId: pi.ingredient_id, quantityUsed: pi.quantity_used, unitUsed: pi.unit_used })),
+            ifood_id: p.ifood_id,
+            ifood_status: p.ifood_status,
+            ifood_external_code: p.ifood_external_code
           })));
         }
 
@@ -263,7 +284,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       // Vamos usar o banco para ter certeza absoluta do estoque atual.
 
-      const { data: productData } = await supabase
+      // 1. Tentar buscar por ID
+      let productData = null;
+
+      const { data: productById } = await supabase
         .from('products')
         .select(`
             id,
@@ -275,9 +299,37 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             )
           `)
         .eq('id', item.productId)
-        .single();
+        .maybeSingle(); // Usar maybeSingle para não estourar erro
 
-      if (!productData) continue;
+      productData = productById;
+
+      // 2. Se não achou por ID (ex: iFood com ID externo), tentar por NOME
+      if (!productData && item.productName) {
+        // Tentar match exato ou case-insensitive
+        const { data: productByName } = await supabase
+          .from('products')
+          .select(`
+                id,
+                name,
+                product_ingredients (
+                  ingredient_id,
+                  quantity_used,
+                  unit_used
+                )
+            `)
+          .ilike('name', item.productName.trim())
+          .maybeSingle();
+
+        if (productByName) {
+          console.log(`🔍 Produto encontrado por nome: "${item.productName}" -> ID: ${productByName.id}`);
+          productData = productByName;
+        }
+      }
+
+      if (!productData) {
+        // Se ainda não achou, não tem como verificar estoque
+        continue;
+      }
 
       const recipe = productData.product_ingredients as any[];
       if (!recipe || recipe.length === 0) continue;
@@ -329,6 +381,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // --- Helper de Estoque ---
   const handleStockUpdate = async (items: OrderItem[]) => {
     console.log('📦 ============ INICIANDO BAIXA DE ESTOQUE ============');
+    // console.trace('🕵️‍♂️ QUEM CHAMOU A BAIXA DE ESTOQUE?'); // DEBUG TRACE REMOVIDO
     console.log('📦 Items para processar:', items);
 
     if (!items || items.length === 0) {
@@ -340,7 +393,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       // Para cada item do pedido
       for (const item of items) {
         // 1. Buscar o produto e sua receita
-        const { data: productData, error: productError } = await supabase
+        // 1. Buscar o produto (Tentar ID, depois Nome)
+        let productData = null;
+        let lookupError = null;
+
+        // A. Tentar por ID
+        const { data: productById, error: errorById } = await supabase
           .from('products')
           .select(`
             id,
@@ -352,10 +410,39 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             )
           `)
           .eq('id', item.productId)
-          .single();
+          .maybeSingle();
 
-        if (productError || !productData) {
-          console.warn(`⚠️ Produto ${item.productName} não encontrado ou sem receita`);
+        if (productById) {
+          productData = productById;
+        } else {
+          // B. Tentar por Nome (Fallback para iFood)
+          if (item.productName) {
+            console.log(`⚠️ ID ${item.productId} não encontrado. Buscando por nome: "${item.productName}"...`);
+            const { data: productByName, error: errorByName } = await supabase
+              .from('products')
+              .select(`
+                    id,
+                    name,
+                    product_ingredients (
+                      ingredient_id,
+                      quantity_used,
+                      unit_used
+                    )
+                  `)
+              .ilike('name', item.productName.trim())
+              .maybeSingle();
+
+            if (productByName) {
+              console.log(`✅ Produto recuperado por nome: ${productByName.name}`);
+              productData = productByName;
+            } else {
+              lookupError = errorByName || errorById;
+            }
+          }
+        }
+
+        if (!productData) {
+          console.warn(`⚠️ Produto "${item.productName}" (ID: ${item.productId}) impossível de rastrear no estoque.`);
           continue;
         }
 
@@ -527,6 +614,112 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     });
   };
 
+  const syncProductWithIfood = async (product: Product): Promise<{ success: boolean; message?: string }> => {
+    try {
+      if (!user) throw new Error("Usuário não autenticado");
+
+      console.log(`🔄 Syncing product ${product.name} to iFood...`);
+
+      // Chamada à Edge Function (simulada ou real)
+      const { data, error } = await supabase.functions.invoke('sync-catalog', {
+        body: {
+          action: 'sync_product',
+          productId: product.id,
+          userId: user?.id
+        }
+      });
+
+      if (error) {
+        console.error("❌ Erro BRUTO da Edge Function (Product):", error);
+        let detailedMessage = error.message;
+
+        // Attempt to read parsing error from context
+        if (error.context && typeof error.context.json === 'function') {
+          try {
+            const body = await error.context.json();
+            if (body && body.error) {
+              detailedMessage = body.error;
+            }
+          } catch (jsonErr) {
+            console.warn("Não foi possível ler JSON de erro", jsonErr);
+          }
+        }
+        throw new Error(detailedMessage || 'Erro desconhecido ao sincronizar produto.');
+      }
+
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+
+      // Update local state is handled by realtime or simple refresh can be triggered
+      // But we can also update local product list to reflect status immediately if we want
+      setProducts(prev => prev.map(p => {
+        if (p.id === product.id) {
+          return {
+            ...p,
+            ifood_id: data.ifoodData?.id,
+            ifood_status: data.ifoodData?.status
+          };
+        }
+        return p;
+      }));
+
+      return { success: true, message: 'Produto sincronizado com sucesso!' };
+    } catch (e: any) {
+      console.error("Function error:", e);
+      return { success: false, message: e.message };
+    }
+  };
+
+  const syncCategoryWithIfood = async (categoryName: string): Promise<{ success: boolean; message?: string }> => {
+    try {
+      if (!user) throw new Error("Usuário não autenticado");
+
+      console.log(`📡 Sincronizando categoria: ${categoryName}...`);
+
+      const { data, error } = await supabase.functions.invoke('sync-catalog', {
+        body: {
+          action: 'sync_category',
+          categoryName: categoryName,
+          userId: user.id
+        }
+      });
+
+      if (error) {
+        // Tenta extrair a mensagem de erro detalhada do corpo da resposta, se possível
+        console.error("❌ Erro BRUTO da Edge Function:", error);
+
+        let detailedMessage = error.message;
+
+        // Hack para tentar ler o corpo da resposta em caso de erro HTTP
+        if (error.context && typeof error.context.json === 'function') {
+          try {
+            const body = await error.context.json();
+            if (body && body.error) {
+              detailedMessage = body.error;
+            }
+          } catch (jsonErr) {
+            console.warn("Não foi possível ler JSON de erro", jsonErr);
+          }
+        }
+
+        throw new Error(detailedMessage || 'Erro desconhecido na comunicação com o servidor.');
+      }
+
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+
+      console.log('✅ Categoria sincronizada:', data);
+      return { success: true };
+
+    } catch (e: any) {
+      console.error("❌ Erro capturado no syncCategoryWithIfood:", e);
+      return { success: false, message: e.message };
+    }
+  };
+
+
   // --- ORDER MANAGEMENT ---
 
   const addOrder = async (order: Order) => {
@@ -648,7 +841,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         total_amount: order.totalAmount,
         status: order.status,
         payment_method: order.paymentMethod,
-        // Adicionar outros campos se necessário
+        // Campos financeiros cruciais
+        cash_register_id: (order as any).cash_register_id,
+        discount: (order as any).discount,
+        service_charge: (order as any).service_charge || (order as any).serviceCharge,
+        tip: (order as any).tip,
+        couvert: (order as any).couvert,
       }).eq('id', order.id);
 
       if (error) throw error;
@@ -831,13 +1029,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         (payload) => {
           console.log('🔔 NOVO PEDIDO RECEBIDO VIA REALTIME!', payload);
 
-          // 1. Tocar Som
-          try {
-            const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-            audio.play().catch(e => console.warn("Erro ao tocar som (interação necessária):", e));
-          } catch (e) {
-            console.error("Erro audio:", e);
-          }
+          // 1. Tocar Som - REMOVIDO (Gerenciado pelo OrderNotificationContext agora)
+          // try {
+          //   const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+          //   audio.play().catch(e => console.warn("Erro ao tocar som (interação necessária):", e));
+          // } catch (e) {
+          //   console.error("Erro audio:", e);
+          // }
 
           // 2. Atualizar Lista
           refreshOrders();
@@ -858,7 +1056,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     <AppContext.Provider value={{
       ingredients, products, fixedCosts, settings, customers, orders, tables, categories, loading,
       addIngredient, updateIngredient, deleteIngredient,
-      addProduct, updateProduct, deleteProduct,
+      addProduct, updateProduct, deleteProduct, syncProductWithIfood, syncCategoryWithIfood,
       addFixedCost, deleteFixedCost,
       addCustomer, updateCustomer, deleteCustomer,
       addOrder, updateOrder,
@@ -921,94 +1119,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
       },
       checkStockAvailability,
-      refreshOrders
+      refreshOrders,
+      activeCashRegisterId
     }}>
       {children}
 
       {/* --- POPUP DE NOVO PEDIDO (Flutuante) --- */}
-      {orders.length > 0 && (() => {
-        // Lógica simples: Se houver um pedido "pending" e "ifood" criado nos últimos 2 minutos que ainda não vimos...
-        // Para simplificar, vamos usar um estado local disparado pelo Realtime.
-        return null;
-      })()}
+      {
+        orders.length > 0 && (() => {
+          // Lógica simples: Se houver um pedido "pending" e "ifood" criado nos últimos 2 minutos que ainda não vimos...
+          // Para simplificar, vamos usar um estado local disparado pelo Realtime.
+          return null;
+        })()
+      }
 
-      <IncomingOrderHandler user={user} />
 
-    </AppContext.Provider>
+
+    </AppContext.Provider >
   );
 };
 
-const IncomingOrderHandler = ({ user }: { user: any }) => {
-  const [incomingOrder, setIncomingOrder] = useState<any>(null);
-  const { refreshOrders, updateOrder } = useContext(AppContext)!;
 
-  useEffect(() => {
-    if (!user) return;
-    const channel = supabase.channel('alert_realtime_modal')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders', filter: `user_id=eq.${user.id}` },
-        async (payload) => {
-          const rawOrder = payload.new;
-          let mappedItems: any[] = [];
-
-          if (rawOrder.external_metadata && rawOrder.external_metadata.items) {
-            mappedItems = rawOrder.external_metadata.items.map((i: any) => ({
-              product_name: i.name,
-              quantity: i.quantity,
-              price: i.unitPrice,
-              total: i.totalPrice
-            }));
-          }
-
-          setIncomingOrder({
-            id: rawOrder.external_id || rawOrder.id,
-            customer_id: rawOrder.user_id,
-            customer_name: rawOrder.customer_name,
-            total_amount: rawOrder.total_amount,
-            status: rawOrder.status,
-            payment_method: rawOrder.payment_method,
-            delivery_type: rawOrder.delivery_type || (rawOrder.integration_source === 'ifood' ? 'delivery' : 'counter'),
-            phone: rawOrder.external_metadata?.customer?.phone?.number,
-            items: mappedItems,
-            delivery_address: rawOrder.delivery_address || (rawOrder.external_metadata?.delivery?.deliveryAddress?.formattedAddress),
-            internal_id: rawOrder.id // Guardando UUID para update correto
-          });
-
-          try {
-            const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-            audio.play().catch(() => { });
-          } catch (e) { }
-
-          refreshOrders();
-        })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [user]);
-
-  if (!incomingOrder) return null;
-
-  return (
-    <NewOrderModal
-      order={incomingOrder}
-      onDismiss={() => setIncomingOrder(null)}
-      onAccept={async () => {
-        // Atualizar status para Em Preparo (Confirmado)
-        if (incomingOrder.internal_id) {
-          // Recriar objeto minimo para updateOrder (que espera um Order completo ou parcial com ID)
-          // Assumindo que updateOrder faz um merge/patch no banco via upsert ou update
-          // Se updateOrder exigir objeto completo, isso pode falhar.
-          // Mas vamos tentar atualizar direto via Supabase aqui para ser mais seguro e não depender da implementação complexa do updateOrder.
-          await supabase.from('orders').update({ status: 'preparing' }).eq('id', incomingOrder.internal_id);
-          await refreshOrders();
-        }
-        setIncomingOrder(null);
-        window.location.hash = '/all-orders';
-      }}
-      onReject={async () => {
-        setIncomingOrder(null);
-      }}
-    />
-  );
-};
 
 export const useApp = () => {
   const context = useContext(AppContext);

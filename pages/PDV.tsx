@@ -221,6 +221,14 @@ const PDV: React.FC = () => {
         couvert: number
     ) => {
         try {
+            // 🔒 CRITICAL: Verificar estoque ANTES de processar venda
+            const { available, missingItems } = await checkStockAvailability(cart);
+
+            if (!available) {
+                alert(`❌ ESTOQUE INSUFICIENTE!\n\nNão é possível processar a venda. Itens em falta:\n\n${missingItems.join('\n')}\n\nReponha o estoque antes de continuar.`);
+                return;
+            }
+
             const subtotal = cartTotal;
             const totalWithAdditions = subtotal + (subtotal * serviceCharge / 100) + tip + couvert - discount;
 
@@ -244,8 +252,8 @@ const PDV: React.FC = () => {
 
             await addOrder(order);
 
-            // Baixa de estoque baseada na ficha técnica
-            await handleStockUpdate(cart);
+            // Baixa de estoque já é feita dentro de addOrder (para completed/open)
+            // await handleStockUpdate(cart); // REMOVIDO PARA EVITAR DUPLICIDADE
 
             // Não limpa carrinho imediatamente, mostra modal de sucesso
             setShowPaymentModal(false);

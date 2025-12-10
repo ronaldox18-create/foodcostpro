@@ -31,6 +31,10 @@ export interface Product {
   preparationMethod?: string;
   created_at?: string;
   user_id?: string;
+  // Integração Catalog
+  ifood_id?: string;
+  ifood_external_code?: string;
+  ifood_status?: 'AVAILABLE' | 'UNAVAILABLE';
 }
 
 export interface FixedCost {

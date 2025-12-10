@@ -186,26 +186,20 @@ const BusinessHoursAdvanced: React.FC = () => {
 
                     // Validar pausa
                     if (hours.pause_start && hours.pause_end) {
-                        if (hours.pause_start >= hours.pause_end) {
-                            throw new Error(`${getDayName(hours.day_of_week)}: Início da pausa deve ser antes do fim`);
-                        }
+                        // Se pausa inicial for MAIOR que final, significa que cruza meia noite.
+                        // Isso só é permitido se o horário PRINCIPAL também cruzar meia noite (overnight)
+                        // OU se for algo bizarro como pausa das 23:00 as 01:00.
 
                         const isOvernight = hours.open_time > hours.close_time;
+                        const pauseCrossesMidnight = hours.pause_start > hours.pause_end;
 
-                        if (!isOvernight) {
-                            // Horário normal (ex: 08:00 - 18:00)
-                            if (hours.pause_start < hours.open_time || hours.pause_end > hours.close_time) {
-                                throw new Error(`${getDayName(hours.day_of_week)}: Pausa deve estar dentro do horário de funcionamento`);
-                            }
-                        } else {
-                            // Horário noturno (ex: 18:00 - 02:00)
-                            // Pausa deve estar no primeiro turno (>= open) OU no segundo turno (<= close)
-                            const inFirstTurn = hours.pause_start >= hours.open_time; // ex: 23:00 start (ok)
-                            const inSecondTurn = hours.pause_end <= hours.close_time; // ex: 01:00 end (ok)
+                        if (pauseCrossesMidnight && !isOvernight) {
+                            // Se o horário principal NÃO é overnight (ex: 08:00 as 20:00), pausa NÃO pode cruzar meia noite
+                            throw new Error(`${getDayName(hours.day_of_week)}: Pausa inválida (cruza meia-noite mas horário não)`);
+                        }
 
-                            if (!inFirstTurn && !inSecondTurn) {
-                                throw new Error(`${getDayName(hours.day_of_week)}: Pausa deve estar dentro do horário de funcionamento`);
-                            }
+                        if (hours.pause_start === hours.pause_end) {
+                            throw new Error(`${getDayName(hours.day_of_week)}: Pausa não pode ter duração zero`);
                         }
                     }
                 }
