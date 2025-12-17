@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { Ingredient, Product, AppSettings, FixedCost, Customer, Order, OrderItem, Table } from '../types';
 import { useAuth } from './AuthContext';
 import { supabase } from '../utils/supabaseClient';
+import { WhatsAppService } from '../services/whatsapp';
 
 
 interface AppContextType {
@@ -100,7 +101,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             quantity: oi.quantity,
             unitPrice: oi.price,
             total: oi.total,
-            addedAt: oi.added_at || new Date().toISOString()
+            addedAt: oi.added_at || new Date().toISOString(),
+            selectedAddons: oi.selected_addons || []
           })),
           integrationSource: o.integration_source,
           externalId: o.external_id
@@ -160,7 +162,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             recipe: p.product_ingredients.map((pi: any) => ({ ingredientId: pi.ingredient_id, quantityUsed: pi.quantity_used, unitUsed: pi.unit_used })),
             ifood_id: p.ifood_id,
             ifood_status: p.ifood_status,
-            ifood_external_code: p.ifood_external_code
+            ifood_external_code: p.ifood_external_code,
+            image_url: p.image_url
           })));
         }
 
@@ -194,7 +197,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
               quantity: oi.quantity,
               unitPrice: oi.price,
               total: oi.total,
-              addedAt: oi.added_at || new Date().toISOString()
+              addedAt: oi.added_at || new Date().toISOString(),
+              selectedAddons: oi.selected_addons || []
             })),
             integrationSource: o.integration_source,
             externalId: o.external_id
@@ -292,10 +296,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         .select(`
             id,
             name,
-            product_ingredients (
+            product_recipes (
               ingredient_id,
-              quantity_used,
-              unit_used
+              quantity_needed,
+              unit
             )
           `)
         .eq('id', item.productId)
@@ -311,10 +315,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           .select(`
                 id,
                 name,
-                product_ingredients (
+                product_recipes (
                   ingredient_id,
-                  quantity_used,
-                  unit_used
+                  quantity_needed,
+                  unit
                 )
             `)
           .ilike('name', item.productName.trim())
@@ -331,7 +335,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         continue;
       }
 
-      const recipe = productData.product_ingredients as any[];
+      const recipe = productData.product_recipes as any[];
       if (!recipe || recipe.length === 0) continue;
 
       for (const recipeItem of recipe) {
@@ -343,10 +347,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         if (!ingredient) continue;
 
-        const recipeQuantityInRecipeUnit = recipeItem.quantity_used * item.quantity;
+        const recipeQuantityInRecipeUnit = recipeItem.quantity_needed * item.quantity;
         const quantityToDeduct = convertToStockUnit(
           recipeQuantityInRecipeUnit,
-          recipeItem.unit_used,
+          recipeItem.unit,
           ingredient.purchase_unit
         );
 
@@ -403,10 +407,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           .select(`
             id,
             name,
-            product_ingredients (
+            product_recipes (
               ingredient_id,
-              quantity_used,
-              unit_used
+              quantity_needed,
+              unit
             )
           `)
           .eq('id', item.productId)
@@ -423,10 +427,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
               .select(`
                     id,
                     name,
-                    product_ingredients (
+                    product_recipes (
                       ingredient_id,
-                      quantity_used,
-                      unit_used
+                      quantity_needed,
+                      unit
                     )
                   `)
               .ilike('name', item.productName.trim())
@@ -446,7 +450,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           continue;
         }
 
-        const recipe = productData.product_ingredients as any[];
+        const recipe = productData.product_recipes as any[];
         if (!recipe || recipe.length === 0) {
           console.log(`ℹ️ Produto ${item.productName} não tem receita cadastrada`);
           continue;
@@ -469,16 +473,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           }
 
           // Converter a quantidade da receita para a unidade de estoque (purchase_unit)
-          const recipeQuantityInRecipeUnit = recipeItem.quantity_used * item.quantity;
+          const recipeQuantityInRecipeUnit = recipeItem.quantity_needed * item.quantity;
           const quantityToDeduct = convertToStockUnit(
             recipeQuantityInRecipeUnit,
-            recipeItem.unit_used,
+            recipeItem.unit,
             ingredient.purchase_unit // Usar purchase_unit como unidade de estoque
           );
 
           const newStock = (ingredient.current_stock || 0) - quantityToDeduct;
 
-          console.log(`🔄 ${ingredient.name}: ${recipeQuantityInRecipeUnit}${recipeItem.unit_used} → ${quantityToDeduct.toFixed(3)}${ingredient.purchase_unit}`);
+          console.log(`🔄 ${ingredient.name}: ${recipeQuantityInRecipeUnit}${recipeItem.unit} → ${quantityToDeduct.toFixed(3)}${ingredient.purchase_unit}`);
 
           // Atualizar o estoque
           const { error: updateError } = await supabase
@@ -497,6 +501,65 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 ? { ...ing, currentStock: newStock }
                 : ing
             ));
+          }
+        }
+
+        // 3. Descontar estoque de COMPLEMENTOS (addons vinculados a ingredientes)
+        if ((item as any).selectedAddons && (item as any).selectedAddons.length > 0) {
+          console.log(`🧩 Descontando complementos (${(item as any).selectedAddons.length})`);
+
+          for (const selectedAddon of (item as any).selectedAddons) {
+            try {
+              // Buscar dados completos do addon
+              const { data: addonData } = await supabase
+                .from('product_addons')
+                .select('ingredient_id, quantity_used, unit_used, name')
+                .eq('id', selectedAddon.addon_id)
+                .single();
+
+              // Se addon tem ingrediente vinculado
+              if (addonData?.ingredient_id && addonData.quantity_used) {
+                // Buscar ingrediente
+                const { data: ingredient } = await supabase
+                  .from('ingredients')
+                  .select('id, name, current_stock, purchase_unit')
+                  .eq('id', addonData.ingredient_id)
+                  .single();
+
+                // Se ingrediente tem controle de estoque
+                if (ingredient && ingredient.current_stock !== null) {
+                  // Calcular quanto descontar (converter unidades se necessário)
+                  const toDeduct = convertToStockUnit(
+                    addonData.quantity_used * item.quantity,
+                    addonData.unit_used,
+                    ingredient.purchase_unit
+                  );
+
+                  const newStock = Math.max(0, ingredient.current_stock - toDeduct);
+
+                  console.log(`  🧩 ${addonData.name} (${ingredient.name}): ${ingredient.current_stock} → ${newStock.toFixed(3)} (-${toDeduct.toFixed(3)} ${ingredient.purchase_unit})`);
+
+                  // Atualizar estoque do ingrediente
+                  const { error: updateError } = await supabase
+                    .from('ingredients')
+                    .update({ current_stock: newStock })
+                    .eq('id', addonData.ingredient_id);
+
+                  if (updateError) {
+                    console.error(`❌ Erro ao atualizar estoque de ${ingredient.name}:`, updateError);
+                  } else {
+                    // Atualizar estado local
+                    setIngredients(prev => prev.map(ing =>
+                      ing.id === ingredient.id
+                        ? { ...ing, currentStock: newStock }
+                        : ing
+                    ));
+                  }
+                }
+              }
+            } catch (addonError) {
+              console.error(`❌ Erro ao processar addon:`, addonError);
+            }
           }
         }
       }
@@ -546,7 +609,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const addProduct = async (prod: Product) => {
     if (!user) return;
     const { data: prodData, error } = await supabase.from('products').insert([{
-      user_id: user.id, name: prod.name, category: prod.category, description: prod.description, current_price: prod.currentPrice, preparation_method: prod.preparationMethod
+      user_id: user.id, name: prod.name, category: prod.category, description: prod.description, current_price: prod.currentPrice, preparation_method: prod.preparationMethod, image_url: prod.image_url
     }]).select().single();
     if (error || !prodData) return;
     if (prod.recipe.length > 0) {
@@ -562,7 +625,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (!user) return;
     setProducts(prev => prev.map(p => p.id === prod.id ? prod : p));
     await supabase.from('products').update({
-      name: prod.name, category: prod.category, description: prod.description, current_price: prod.currentPrice, preparation_method: prod.preparationMethod
+      name: prod.name, category: prod.category, description: prod.description, current_price: prod.currentPrice, preparation_method: prod.preparationMethod, image_url: prod.image_url
     }).eq('id', prod.id);
     await supabase.from('product_ingredients').delete().eq('product_id', prod.id);
     if (prod.recipe.length > 0) {
@@ -817,6 +880,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         await handleStockUpdate(order.items);
       }
 
+      // 6. ENVIAR NOTIFICAÇÃO WHATSAPP
+      // Notificar cliente via WhatsApp se estiver configurado
+      try {
+        // Buscar cliente se não for guest
+        if (order.customerId && order.customerId !== 'guest') {
+          const customer = customers.find(c => c.id === order.customerId);
+          if (customer && customer.phone) {
+            console.log('📱 Enviando notificação WhatsApp para:', customer.name);
+            await WhatsAppService.notifyOrderConfirmed(order, customer);
+          }
+        }
+      } catch (whatsappError) {
+        // Não interromper o fluxo se WhatsApp falhar
+        console.error('❌ Erro ao enviar WhatsApp (não crítico):', whatsappError);
+      }
+
     } catch (err) {
       console.error("Falha crítica no addOrder:", err);
       alert("Erro ao salvar pedido. Verifique sua conexão.");
@@ -961,6 +1040,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
       // Nota: Pedidos fechados (open → completed) NÃO baixam estoque aqui
       // pois já foi baixado quando o pedido foi criado ou quando itens foram adicionados
+
+      // 6. ENVIAR NOTIFICAÇÃO WHATSAPP (mudança de status)
+      // Notificar mudanças de status relevantes
+      try {
+        if (prevOrder && prevOrder.status !== order.status) {
+          console.log(`📱 Status mudou de ${prevOrder.status} → ${order.status}`);
+
+          // Buscar cliente
+          if (order.customerId && order.customerId !== 'guest') {
+            const customer = customers.find(c => c.id === order.customerId);
+            if (customer && customer.phone) {
+              await WhatsAppService.notifyOrderStatusChange(order, customer, order.status);
+            }
+          }
+        }
+      } catch (whatsappError) {
+        // Não interromper o fluxo se WhatsApp falhar
+        console.error('❌ Erro ao enviar WhatsApp (não crítico):', whatsappError);
+      }
 
     } catch (err) {
       console.error("Falha crítica no updateOrder:", err);

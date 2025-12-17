@@ -23,6 +23,13 @@ const AllOrders: React.FC = () => {
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
     const [confirmingOrder, setConfirmingOrder] = useState<Order | null>(null);
 
+    // Paginação
+    const [page, setPage] = useState(1);
+    const ITEMS_PER_PAGE = 20;
+
+    // Filtro de Data
+    const [dateFilter, setDateFilter] = useState<'today' | '7days' | 'month' | 'all'>('all');
+
     // Quick Stats do dia
     const todayStats = useMemo(() => {
         const today = new Date().toDateString();
@@ -100,6 +107,16 @@ const AllOrders: React.FC = () => {
                             <span>${item.quantity}x ${item.productName}</span>
                             <span>${item.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
                         </div>
+                        ${item.selectedAddons && item.selectedAddons.length > 0 ? `
+                            <div style="margin-left: 20px; margin-top: 2px; margin-bottom: 5px;">
+                                ${item.selectedAddons.map((addon: any) => `
+                                    <div style="font-size: 11px; color: #666;">
+                                        <span>  + ${addon.addon_name}</span>
+                                        ${addon.price_adjustment > 0 ? ` <span style="float: right;">+${addon.price_adjustment.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>` : ''}
+                                    </div>
+                                `).join('')}
+                            </div>
+                        ` : ''}
                     `).join('')}
                 </div>
                 <div class="total">
@@ -142,6 +159,20 @@ const AllOrders: React.FC = () => {
                 if (!['canceled', 'cancelled'].includes(s)) return false;
             }
 
+            // Filtro de Data
+            const orderDate = new Date(order.date);
+            const now = new Date();
+
+            if (dateFilter === 'today') {
+                if (orderDate.toDateString() !== now.toDateString()) return false;
+            } else if (dateFilter === '7days') {
+                const sevenDaysAgo = new Date();
+                sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+                if (orderDate < sevenDaysAgo) return false;
+            } else if (dateFilter === 'month') {
+                if (orderDate.getMonth() !== now.getMonth() || orderDate.getFullYear() !== now.getFullYear()) return false;
+            }
+
             if (selectedSource !== 'all') {
                 const isVirtual = (order as any).delivery_type || (order as any).deliveryType;
                 const isTable = order.tableId;
@@ -165,7 +196,14 @@ const AllOrders: React.FC = () => {
             return true;
         })
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Sempre ordenar por data decrescente
-    }, [orders, filterGroup, selectedSource, searchTerm]);
+    }, [orders, filterGroup, selectedSource, searchTerm, dateFilter]);
+
+    // Pedidos paginados
+    const paginatedOrders = useMemo(() => {
+        return filteredOrders.slice(0, page * ITEMS_PER_PAGE);
+    }, [filteredOrders, page]);
+
+    const hasMore = paginatedOrders.length < filteredOrders.length;
 
     const handleConfirmPayment = async (paymentMethod: PaymentMethod, cashRegisterId: string | null) => {
         if (!confirmingOrder) return;
@@ -327,13 +365,30 @@ const AllOrders: React.FC = () => {
                                 <Filter size={14} />
                             </div>
                         </div>
+
+                        {/* Filtro de Data */}
+                        <div className="relative">
+                            <select
+                                value={dateFilter}
+                                onChange={(e) => { setDateFilter(e.target.value as any); setPage(1); }}
+                                className="appearance-none pl-9 pr-8 py-2 bg-gray-50 border-none rounded-xl text-sm font-bold text-gray-600 focus:ring-2 focus:ring-orange-100 cursor-pointer min-w-[120px]"
+                            >
+                                <option value="all">Todo Período</option>
+                                <option value="today">Hoje</option>
+                                <option value="7days">Últimos 7 dias</option>
+                                <option value="month">Este Mês</option>
+                            </select>
+                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none">
+                                <Calendar size={14} />
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
 
             {/* Grid de Pedidos */}
             <div className={`grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 ${viewMode === 'list' ? 'md:grid-cols-1 xl:grid-cols-1' : ''}`}>
-                {filteredOrders.length === 0 ? (
+                {paginatedOrders.length === 0 ? (
                     <div className="md:col-span-3 text-center py-20">
                         <div className="bg-gray-100 w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-4">
                             <Package size={40} className="text-gray-400" />
@@ -342,7 +397,7 @@ const AllOrders: React.FC = () => {
                         <p className="text-gray-500">Tente mudar os filtros ou busque por outro termo.</p>
                     </div>
                 ) : (
-                    filteredOrders.map(order => {
+                    paginatedOrders.map(order => {
                         const statusInfo = getStatusInfo(order.status);
                         const sourceInfo = getSourceInfo(getOrderSource(order));
 
@@ -392,23 +447,39 @@ const AllOrders: React.FC = () => {
                                     </div>
 
                                     {/* Footer Card */}
-                                    <div className="border-t border-dashed border-gray-100 pt-4 mt-auto flex items-center justify-between">
-                                        <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-500">
-                                            {React.createElement(sourceInfo.icon, { size: 14 })}
-                                            <span>
-                                                {sourceInfo.label}
-                                                {order.tableNumber && <span className="text-gray-900 ml-1">Mesa {order.tableNumber}</span>}
-                                            </span>
-                                        </div>
-                                        <div className="flex items-center gap-3">
-                                            <button
-                                                onClick={(e) => handlePrintOrder(e, order)}
-                                                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition"
-                                                title="Imprimir Recibo"
-                                            >
-                                                <Printer size={18} />
-                                            </button>
-                                            <p className="font-black text-gray-900 text-lg">{formatCurrency(order.totalAmount)}</p>
+                                    <div className="border-t border-dashed border-gray-100 pt-3 mt-auto space-y-2">
+                                        {/* Forma de Pagamento */}
+                                        {order.paymentMethod && (
+                                            <div className="flex items-center gap-2 text-xs">
+                                                <DollarSign size={12} className="text-green-600" />
+                                                <span className="text-gray-600 font-medium">
+                                                    {{
+                                                        'dinheiro': '💵 Dinheiro',
+                                                        'pix': '🔗 PIX',
+                                                        'cartao_credito': '💳 Crédito',
+                                                        'cartao_debito': '💳 Débito'
+                                                    }[order.paymentMethod] || order.paymentMethod}
+                                                </span>
+                                            </div>
+                                        )}
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-500">
+                                                {React.createElement(sourceInfo.icon, { size: 14 })}
+                                                <span>
+                                                    {sourceInfo.label}
+                                                    {order.tableNumber && <span className="text-gray-900 ml-1">Mesa {order.tableNumber}</span>}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                <button
+                                                    onClick={(e) => handlePrintOrder(e, order)}
+                                                    className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition"
+                                                    title="Imprimir Recibo"
+                                                >
+                                                    <Printer size={18} />
+                                                </button>
+                                                <p className="font-black text-gray-900 text-lg">{formatCurrency(order.totalAmount)}</p>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -424,6 +495,22 @@ const AllOrders: React.FC = () => {
                     })
                 )}
             </div>
+
+            {/* Botão Carregar Mais */}
+            {hasMore && (
+                <div className="text-center mt-8">
+                    <button
+                        onClick={() => setPage(page + 1)}
+                        className="px-8 py-3 bg-gradient-to-r from-orange-500 to-pink-500 text-white rounded-xl font-bold hover:from-orange-600 hover:to-pink-600 transition shadow-lg inline-flex items-center gap-2"
+                    >
+                        <ArrowUpRight size={20} />
+                        Carregar Mais Pedidos
+                    </button>
+                    <p className="text-xs text-gray-500 mt-3">
+                        Mostrando {paginatedOrders.length} de {filteredOrders.length} pedidos
+                    </p>
+                </div>
+            )}
 
             {/* Modal de Detalhes do Pedido */}
             {selectedOrder && (
@@ -475,15 +562,35 @@ const AllOrders: React.FC = () => {
                                     <ShoppingBag size={16} className="text-orange-600" /> Itens do Pedido
                                 </h4>
                                 {selectedOrder.items?.map((item, idx) => (
-                                    <div key={idx} className="flex justify-between items-center py-2 border-b border-dashed border-gray-100 last:border-0">
-                                        <div className="flex items-center gap-3">
-                                            <span className="font-bold text-gray-900 w-6">{item.quantity}x</span>
-                                            <div>
-                                                <p className="text-sm font-semibold text-gray-800">{item.productName}</p>
-                                                {/* Se tiver notes/obs */}
+                                    <div key={idx} className="border-b border-dashed border-gray-100 last:border-0 py-3">
+                                        <div className="flex justify-between items-center">
+                                            <div className="flex items-center gap-3">
+                                                <span className="font-bold text-gray-900 w-6">{item.quantity}x</span>
+                                                <div>
+                                                    <p className="text-sm font-semibold text-gray-800">{item.productName}</p>
+                                                </div>
                                             </div>
+                                            <span className="text-sm font-bold text-gray-600">{formatCurrency(item.total)}</span>
                                         </div>
-                                        <span className="text-sm font-bold text-gray-600">{formatCurrency(item.total)}</span>
+
+                                        {/* Complementos */}
+                                        {(item as any).selectedAddons && (item as any).selectedAddons.length > 0 && (
+                                            <div className="ml-9 mt-2 space-y-1">
+                                                {(item as any).selectedAddons.map((addon: any, addonIdx: number) => (
+                                                    <div key={addonIdx} className="flex items-center justify-between text-xs text-gray-600">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="w-1 h-1 bg-yellow-500 rounded-full"></span>
+                                                            <span className="font-medium">{addon.addon_name}</span>
+                                                        </div>
+                                                        {addon.price_adjustment > 0 && (
+                                                            <span className="text-green-600 font-semibold">
+                                                                +{formatCurrency(addon.price_adjustment)}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>
@@ -512,6 +619,23 @@ const AllOrders: React.FC = () => {
                                     )}
                                 </div>
                             </div>
+
+                            {/* Forma de Pagamento */}
+                            {selectedOrder.paymentMethod && (
+                                <div className="bg-green-50 p-4 rounded-2xl border border-green-200">
+                                    <h4 className="font-bold text-green-900 flex items-center gap-2 text-sm uppercase tracking-wide mb-2">
+                                        <DollarSign size={16} /> Pagamento
+                                    </h4>
+                                    <p className="text-lg font-bold text-gray-900">
+                                        {{
+                                            'dinheiro': '💵 Dinheiro',
+                                            'pix': '🔗 PIX',
+                                            'cartao_credito': '💳 Cartão de Crédito',
+                                            'cartao_debito': '💳 Cartão de Débito'
+                                        }[selectedOrder.paymentMethod] || selectedOrder.paymentMethod}
+                                    </p>
+                                </div>
+                            )}
                         </div>
 
                         {/* Modal Footer - Actions */}

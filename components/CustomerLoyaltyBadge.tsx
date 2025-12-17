@@ -17,13 +17,15 @@ interface CustomerLoyaltyBadgeProps {
         pointsRequired: number;
     } | null;
     compact?: boolean;
+    variant?: 'light' | 'dark'; // light = fundo claro, dark = fundo escuro
 }
 
 const CustomerLoyaltyBadge: React.FC<CustomerLoyaltyBadgeProps> = ({
     points,
     currentLevel,
     nextLevel,
-    compact = false
+    compact = false,
+    variant = 'dark'
 }) => {
     if (!currentLevel) return null;
 
@@ -34,15 +36,37 @@ const CustomerLoyaltyBadge: React.FC<CustomerLoyaltyBadgeProps> = ({
     const pointsToNext = nextLevel ? nextLevel.pointsRequired - points : 0;
 
     if (compact) {
-        return (
-            <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-3 py-1.5">
-                <span className="text-lg">{currentLevel.icon}</span>
-                <div className="text-white">
-                    <p className="text-xs font-bold leading-none">{currentLevel.name}</p>
-                    <p className="text-[10px] opacity-80">{points} pontos</p>
+        if (variant === 'light') {
+            // Fundo claro - usar cores escuras
+            return (
+                <div
+                    className="flex items-center gap-2 rounded-xl px-3 py-2 border-2 shadow-sm"
+                    style={{
+                        backgroundColor: `${currentLevel.color}15`,
+                        borderColor: `${currentLevel.color}40`
+                    }}
+                >
+                    <span className="text-xl">{currentLevel.icon}</span>
+                    <div>
+                        <p className="text-xs font-bold leading-none" style={{ color: currentLevel.color }}>
+                            {currentLevel.name}
+                        </p>
+                        <p className="text-[10px] text-gray-600">{points} pontos</p>
+                    </div>
                 </div>
-            </div>
-        );
+            );
+        } else {
+            // Fundo escuro - usar cores claras
+            return (
+                <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-3 py-1.5">
+                    <span className="text-lg">{currentLevel.icon}</span>
+                    <div className="text-white">
+                        <p className="text-xs font-bold leading-none">{currentLevel.name}</p>
+                        <p className="text-[10px] opacity-80">{points} pontos</p>
+                    </div>
+                </div>
+            );
+        }
     }
 
     return (

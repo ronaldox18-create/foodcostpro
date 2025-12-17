@@ -6,6 +6,7 @@ import { Plus, Search, MessageCircle, User, MapPin, Edit2, Trash2, Calendar, Dol
 import { formatCurrency } from '../utils/calculations';
 import { askAI } from '../utils/aiHelper';
 import PlanGuard from '../components/PlanGuard';
+import PhoneInput from '../components/PhoneInput';
 
 type FilterTab = 'all' | 'vip' | 'missing' | 'birthdays';
 
@@ -781,17 +782,11 @@ Prato favorito: ${stats.favoriteDish}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">WhatsApp / Tel</label>
-                  <input
-                    required
-                    type="text"
-                    placeholder="11999999999"
-                    value={formData.phone}
-                    onChange={e => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none bg-white text-gray-900"
-                  />
-                </div>
+                <PhoneInput
+                  value={formData.phone}
+                  onChange={(value) => setFormData({ ...formData, phone: value })}
+                  required={true}
+                />
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Data Nascimento</label>
                   <input

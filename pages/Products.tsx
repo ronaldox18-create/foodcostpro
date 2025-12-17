@@ -1,17 +1,23 @@
 import React, { useState } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { Product, RecipeItem, UnitType } from '../types';
-import { Plus, Trash2, Edit2, Calculator, Info, AlertTriangle, Copy, Sparkles, Loader, Wand2, X, TrendingUp, DollarSign, Percent, ChevronRight, Lock, RefreshCw, Layers } from 'lucide-react';
+import { Plus, Trash2, Edit2, Calculator, Info, AlertTriangle, Copy, Sparkles, Loader, Wand2, X, TrendingUp, DollarSign, Percent, ChevronRight, Lock, RefreshCw, Layers, Image as ImageIcon, Loader2 } from 'lucide-react';
 import PlanGuard from '../components/PlanGuard';
 import { useAuth } from '../contexts/AuthContext';
 import { calculateProductMetrics, formatCurrency, formatPercent } from '../utils/calculations';
 import { askAI } from '../utils/aiHelper';
+import { supabase } from '../utils/supabaseClient';
+import ProductEditModal from '../components/ProductEditModal';
 
 const Products: React.FC = () => {
   const { products, ingredients, fixedCosts, settings, categories, addProduct, updateProduct, deleteProduct, syncProductWithIfood } = useApp();
   const { checkAccess } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  // Estado para modal profissional de edição
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [productToEdit, setProductToEdit] = useState<Product | null>(null);
 
   const maxRecipes = checkAccess('maxRecipes');
   const isLimitReached = typeof maxRecipes === 'number' && products.length >= maxRecipes;
@@ -45,7 +51,10 @@ const Products: React.FC = () => {
     currentPrice: 0,
     preparationMethod: '',
     recipe: [],
+    image_url: ''
   });
+
+  const [uploading, setUploading] = useState(false);
 
   // Recipe builder local state
   const [newIngredientId, setNewIngredientId] = useState('');
@@ -64,16 +73,15 @@ const Products: React.FC = () => {
   };
 
   const resetForm = () => {
-    setFormData({ name: '', category: '', description: '', currentPrice: 0, preparationMethod: '', recipe: [] });
+    setFormData({ name: '', category: '', description: '', currentPrice: 0, preparationMethod: '', recipe: [], image_url: '' });
     setEditingId(null);
     setNewIngredientId('');
     setNewIngredientQty(0);
   };
 
   const handleEdit = (prod: Product) => {
-    setFormData({ ...prod, description: prod.description || '', preparationMethod: prod.preparationMethod || '' });
-    setEditingId(prod.id);
-    setIsModalOpen(true);
+    setProductToEdit(prod);
+    setEditModalOpen(true);
   };
 
   const handleDuplicate = (prod: Product) => {
@@ -85,7 +93,8 @@ const Products: React.FC = () => {
       ...prod,
       name: `${prod.name} (Cópia)`,
       description: prod.description || '',
-      preparationMethod: prod.preparationMethod || ''
+      preparationMethod: prod.preparationMethod || '',
+      image_url: prod.image_url || ''
     });
     setEditingId(null);
     setIsModalOpen(true);
@@ -138,6 +147,37 @@ const Products: React.FC = () => {
 
     setIsSyncingAll(false);
     alert(`Sincronização concluída!\n✅ Sucessos: ${successCount}\n❌ Falhas: ${failCount}`);
+  };
+
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    try {
+      setUploading(true);
+      if (!event.target.files || event.target.files.length === 0) {
+        return;
+      }
+
+      const file = event.target.files[0];
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${editingId || 'new'}-${Date.now()}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('product-images')
+        .upload(filePath, file);
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      const { data } = supabase.storage.from('product-images').getPublicUrl(filePath);
+
+      setFormData(prev => ({ ...prev, image_url: data.publicUrl }));
+    } catch (error) {
+      alert('Erro ao fazer upload da imagem!');
+      console.error(error);
+    } finally {
+      setUploading(false);
+    }
   };
 
   // --- AI ACTIONS ---
@@ -346,6 +386,7 @@ const Products: React.FC = () => {
                   <span className="text-xs font-semibold text-orange-600 bg-orange-50 px-2 py-1 rounded-full uppercase tracking-wide">
                     {product.category || 'Geral'}
                   </span>
+                  {product.image_url && <img src={product.image_url} alt={product.name} className="mt-2 w-full h-32 object-cover rounded-lg" />}
                   <h3 className="text-lg font-bold text-gray-900 mt-2">{product.name}</h3>
                   {product.description && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{product.description}</p>}
                 </div>
@@ -629,29 +670,55 @@ const Products: React.FC = () => {
                     </h4>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Nome do Produto *</label>
-                        <input
-                          required
-                          type="text"
-                          value={formData.name}
-                          onChange={e => setFormData({ ...formData, name: e.target.value })}
-                          placeholder="Ex: X-Bacon Classic"
-                          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none bg-white text-gray-900 transition"
-                        />
+                      <div className="md:col-span-1">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Foto do Produto</label>
+                        <div className="relative w-full aspect-square bg-gray-100 rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden hover:bg-gray-50 transition-colors group cursor-pointer">
+                          {formData.image_url ? (
+                            <img src={formData.image_url} alt="Preview" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="flex flex-col items-center gap-2 text-gray-400 group-hover:text-gray-600">
+                              <ImageIcon size={32} />
+                              <span className="text-xs font-medium">Upload</span>
+                            </div>
+                          )}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleImageUpload}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                          />
+                          {uploading && (
+                            <div className="absolute inset-0 bg-white/80 flex items-center justify-center">
+                              <Loader2 size={32} className="text-orange-500 animate-spin" />
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Categoria</label>
-                        <select
-                          value={formData.category}
-                          onChange={e => setFormData({ ...formData, category: e.target.value })}
-                          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none bg-white text-gray-900 transition"
-                        >
-                          <option value="">Sem categoria</option>
-                          {categories.map(cat => (
-                            <option key={cat} value={cat}>{cat}</option>
-                          ))}
-                        </select>
+                      <div className="md:col-span-2 space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Nome do Produto *</label>
+                          <input
+                            required
+                            type="text"
+                            value={formData.name}
+                            onChange={e => setFormData({ ...formData, name: e.target.value })}
+                            placeholder="Ex: X-Bacon Classic"
+                            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none bg-white text-gray-900 transition"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Categoria</label>
+                          <select
+                            value={formData.category}
+                            onChange={e => setFormData({ ...formData, category: e.target.value })}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none bg-white text-gray-900 transition"
+                          >
+                            <option value="">Sem categoria</option>
+                            {categories.map(cat => (
+                              <option key={cat} value={cat}>{cat}</option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
                     </div>
 
@@ -870,7 +937,22 @@ const Products: React.FC = () => {
           </div>
         )
       }
-    </div >
+
+      {/* Modal Profissional de Edição de Produto */}
+      {editModalOpen && (
+        <ProductEditModal
+          product={productToEdit}
+          onClose={() => {
+            setEditModalOpen(false);
+            setProductToEdit(null);
+          }}
+          onSave={() => {
+            // Recarregar produtos
+            window.location.reload();
+          }}
+        />
+      )}
+    </div>
   );
 };
 

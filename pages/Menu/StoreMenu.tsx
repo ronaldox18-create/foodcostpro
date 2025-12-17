@@ -1,12 +1,13 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../utils/supabaseClient';
-import { Product, BusinessHours, SpecialHours, StoreStatus } from '../../types';
+import { Product, BusinessHours, SpecialHours, StoreStatus, StoreVisualSettings } from '../../types';
 import { formatCurrency } from '../../utils/calculations';
 import { Search, Plus, Minus, ShoppingCart, Star, X, Trash2, ArrowRight, CheckCircle, Clock, Award, Sparkles } from 'lucide-react';
 import CheckoutModal, { CheckoutData } from '../../components/CheckoutModal';
 import { checkStoreStatus } from '../../utils/businessHours';
 import CustomerLoyaltyBadge from '../../components/CustomerLoyaltyBadge';
+import ProductCustomizationModal, { ProductCustomization } from '../../components/ProductCustomizationModal';
 
 interface LoyaltyLevel {
     id: string;
@@ -22,6 +23,16 @@ interface LoyaltySettings {
     points_per_real: number;
 }
 
+interface CartItemExtended {
+    id: string;
+    productId: string;
+    quantity: number;
+    variation?: any;
+    selectedAddons?: any[];
+    notes?: string;
+    totalPrice: number;
+}
+
 const StoreMenu: React.FC = () => {
     const { storeId } = useParams();
     const navigate = useNavigate();
@@ -31,12 +42,21 @@ const StoreMenu: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('Todos');
-    const [cart, setCart] = useState<{ productId: string, quantity: number }[]>([]);
+    const [cart, setCart] = useState<CartItemExtended[]>([]);
     const [showCart, setShowCart] = useState(false);
     const [showCheckoutModal, setShowCheckoutModal] = useState(false);
     const [checkoutSuccess, setCheckoutSuccess] = useState(false);
     const [customerData, setCustomerData] = useState<{ phone?: string; address?: string }>({});
     const [storeStatus, setStoreStatus] = useState<StoreStatus | null>(null);
+
+    // Visual Settings
+    const [visualSettings, setVisualSettings] = useState<StoreVisualSettings | null>(null);
+
+    // Customization Modal
+    const [customizationModal, setCustomizationModal] = useState<{
+        show: boolean;
+        product: Product | null;
+    }>({ show: false, product: null });
 
     // Loyalty System
     const [loyaltySettings, setLoyaltySettings] = useState<LoyaltySettings | null>(null);
@@ -60,6 +80,17 @@ const StoreMenu: React.FC = () => {
 
                 if (settingsData?.business_name) {
                     setStoreName(settingsData.business_name);
+                }
+
+                // Fetch visual settings
+                const { data: visualData } = await supabase
+                    .from('store_visual_settings')
+                    .select('*')
+                    .eq('user_id', storeId)
+                    .single();
+
+                if (visualData) {
+                    setVisualSettings(visualData);
                 }
 
                 // Fetch business hours
@@ -99,7 +130,8 @@ const StoreMenu: React.FC = () => {
                         description: p.description,
                         currentPrice: p.current_price,
                         preparationMethod: p.preparation_method,
-                        recipe: []
+                        recipe: [],
+                        image_url: p.image_url
                     })));
 
                     const uniqueCats = Array.from(new Set(productsData.map(p => p.category).filter(Boolean)));
@@ -173,6 +205,32 @@ const StoreMenu: React.FC = () => {
         fetchData();
     }, [storeId]);
 
+    const productHasCustomizations = async (productId: string): Promise<boolean> => {
+        try {
+            // Check variations
+            const { data: variations } = await supabase
+                .from('product_variations')
+                .select('id')
+                .eq('product_id', productId)
+                .eq('is_available', true)
+                .limit(1);
+
+            if (variations && variations.length > 0) return true;
+
+            // Check addon groups  
+            const { data: links } = await supabase
+                .from('product_addon_group_links')
+                .select('id')
+                .eq('product_id', productId)
+                .limit(1);
+
+            return !!(links && links.length > 0);
+        } catch (error) {
+            console.error('Error checking customizations:', error);
+            return false;
+        }
+    };
+
     const filteredProducts = useMemo(() => {
         let filtered = products.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()));
         if (selectedCategory !== 'Todos') {
@@ -181,45 +239,93 @@ const StoreMenu: React.FC = () => {
         return filtered;
     }, [products, searchTerm, selectedCategory]);
 
-    const addToCart = (productId: string) => {
+    const addToCart = async (productId: string) => {
         if (storeStatus && !storeStatus.isOpen) {
             alert(`A loja está fechada no momento.\n\n${storeStatus.message}`);
             return;
         }
 
-        setCart(prev => {
-            const existing = prev.find(item => item.productId === productId);
-            if (existing) {
-                return prev.map(item => item.productId === productId ? { ...item, quantity: item.quantity + 1 } : item);
+        const product = products.find(p => p.id === productId);
+        if (!product) return;
+
+        // Check if product has customizations
+        const hasCustomizations = await productHasCustomizations(productId);
+
+        if (hasCustomizations) {
+            // Open customization modal
+            setCustomizationModal({ show: true, product });
+        } else {
+            // Add directly to cart (simple product)
+            const existingItem = cart.find(item =>
+                item.productId === productId &&
+                !item.variation &&
+                (!item.selectedAddons || item.selectedAddons.length === 0)
+            );
+
+            if (existingItem) {
+                setCart(cart.map(item =>
+                    item.id === existingItem.id
+                        ? { ...item, quantity: item.quantity + 1, totalPrice: (item.quantity + 1) * product.currentPrice }
+                        : item
+                ));
+            } else {
+                setCart([...cart, {
+                    id: Date.now().toString(),
+                    productId,
+                    quantity: 1,
+                    totalPrice: product.currentPrice
+                }]);
             }
-            return [...prev, { productId, quantity: 1 }];
-        });
+        }
     };
 
-    const removeFromCart = (productId: string) => {
-        setCart(prev => {
-            const existing = prev.find(item => item.productId === productId);
-            if (existing && existing.quantity > 1) {
-                return prev.map(item => item.productId === productId ? { ...item, quantity: item.quantity - 1 } : item);
-            }
-            return prev.filter(item => item.productId !== productId);
-        });
+    const handleAddCustomization = (customization: ProductCustomization) => {
+        const customizedItem: CartItemExtended = {
+            id: Date.now().toString(),
+            productId: customization.productId,
+            quantity: customization.quantity,
+            variation: customization.variation,
+            selectedAddons: customization.selectedAddons,
+            notes: customization.notes,
+            totalPrice: customization.totalPrice
+        };
+
+        setCart([...cart, customizedItem]);
     };
 
-    const clearItemFromCart = (productId: string) => {
-        setCart(prev => prev.filter(item => item.productId !== productId));
+    const removeFromCart = (itemId: string) => {
+        const item = cart.find(i => i.id === itemId);
+        if (!item) return;
+
+        if (item.quantity > 1) {
+            const product = products.find(p => p.id === item.productId);
+            const unitPrice = item.variation?.price || product?.currentPrice || 0;
+            const addonsPrice = (item.selectedAddons || []).reduce((sum, addon) => sum + addon.price_adjustment, 0);
+            const newTotal = (unitPrice + addonsPrice) * (item.quantity - 1);
+
+            setCart(cart.map(i =>
+                i.id === itemId
+                    ? { ...i, quantity: i.quantity - 1, totalPrice: newTotal }
+                    : i
+            ));
+        } else {
+            setCart(cart.filter(i => i.id !== itemId));
+        }
+    };
+
+    const clearItemFromCart = (itemId: string) => {
+        setCart(cart.filter(i => i.id !== itemId));
     };
 
     const getQuantity = (productId: string) => {
-        return cart.find(item => item.productId === productId)?.quantity || 0;
+        return cart
+            .filter(item => item.productId === productId)
+            .reduce((sum, item) => sum + item.quantity, 0);
     };
 
     const cartTotal = useMemo(() => {
-        return cart.reduce((acc, item) => {
-            const product = products.find(p => p.id === item.productId);
-            return acc + (product ? product.currentPrice * item.quantity : 0);
-        }, 0);
-    }, [cart, products]);
+        return cart.reduce((total, item) => total + item.totalPrice, 0);
+    }, [cart]);
 
     const cartItemsCount = useMemo(() => {
         return cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -256,7 +362,8 @@ const StoreMenu: React.FC = () => {
                     product_name: product?.name || 'Produto',
                     quantity: item.quantity,
                     price: product?.currentPrice || 0,
-                    total: (product?.currentPrice || 0) * item.quantity
+                    total: (product?.currentPrice || 0) * item.quantity,
+                    selected_addons: item.selectedAddons || []
                 };
             });
 
@@ -295,6 +402,137 @@ const StoreMenu: React.FC = () => {
                 await supabase.from('order_items').insert(itemsToInsert);
             } catch (itemsError) {
                 console.warn('Could not save order items:', itemsError);
+            }
+
+            // Discount stock from variations or products
+            try {
+                for (const item of cart) {
+                    // 1. Descontar estoque da RECEITA BASE do produto
+                    const product = products.find(p => p.id === item.productId);
+                    if (product) {
+                        // Buscar receita do produto
+                        const { data: recipeItems } = await supabase
+                            .from('product_recipes')
+                            .select('ingredient_id, quantity_needed, unit')
+                            .eq('product_id', product.id);
+
+                        if (recipeItems && recipeItems.length > 0) {
+                            console.log(`📝 Descontando receita de "${product.name}" (x${item.quantity})`);
+
+                            for (const recipeItem of recipeItems) {
+                                // Buscar ingrediente
+                                const { data: ingredient } = await supabase
+                                    .from('ingredients')
+                                    .select('stock_quantity, unit, name')
+                                    .eq('id', recipeItem.ingredient_id)
+                                    .single();
+
+                                // Se ingrediente tem controle de estoque
+                                if (ingredient && ingredient.stock_quantity !== null) {
+                                    // Calcular quanto descontar (converter unidades se necessário)
+                                    let toDeduct = recipeItem.quantity_needed * item.quantity;
+
+                                    // Conversão de unidades
+                                    if (recipeItem.unit && ingredient.unit && recipeItem.unit !== ingredient.unit) {
+                                        if (recipeItem.unit === 'kg' && ingredient.unit === 'g') toDeduct *= 1000;
+                                        else if (recipeItem.unit === 'g' && ingredient.unit === 'kg') toDeduct /= 1000;
+                                        else if (recipeItem.unit === 'l' && ingredient.unit === 'ml') toDeduct *= 1000;
+                                        else if (recipeItem.unit === 'ml' && ingredient.unit === 'l') toDeduct /= 1000;
+                                    }
+
+                                    const newStock = Math.max(0, ingredient.stock_quantity - toDeduct);
+
+                                    console.log(`  - ${ingredient.name}: ${ingredient.stock_quantity} → ${newStock} (${toDeduct} ${ingredient.unit})`);
+
+                                    // Atualizar estoque do ingrediente
+                                    await supabase
+                                        .from('ingredients')
+                                        .update({ stock_quantity: newStock })
+                                        .eq('id', recipeItem.ingredient_id);
+                                }
+                            }
+                        }
+                    }
+
+                    // 2. Descontar estoque de VARIAÇÕES (se houver)
+                    if (item.variation && item.variation.id) {
+                        // Has variation - discount from variation stock
+                        const { data: currentVariation } = await supabase
+                            .from('product_variations')
+                            .select('stock_quantity')
+                            .eq('id', item.variation.id)
+                            .single();
+
+                        if (currentVariation && currentVariation.stock_quantity !== null) {
+                            const newStock = Math.max(0, currentVariation.stock_quantity - item.quantity);
+                            await supabase
+                                .from('product_variations')
+                                .update({ stock_quantity: newStock })
+                                .eq('id', item.variation.id);
+                        }
+                    } else {
+                        // No variation - discount from product stock (existing logic)
+                        const product = products.find(p => p.id === item.productId);
+                        if (product && (product as any).stock_quantity !== undefined) {
+                            const newStock = Math.max(0, (product as any).stock_quantity - item.quantity);
+                            await supabase
+                                .from('products')
+                                .update({ stock_quantity: newStock })
+                                .eq('id', item.productId);
+                        }
+                    }
+
+                    // 3. Descontar estoque de COMPLEMENTOS (from linked ingredients)
+                    if (item.selectedAddons && item.selectedAddons.length > 0) {
+                        console.log(`🧩 Descontando complementos (${item.selectedAddons.length})`);
+
+                        for (const selectedAddon of item.selectedAddons) {
+                            // Buscar dados completos do addon
+                            const { data: addonData } = await supabase
+                                .from('product_addons')
+                                .select('ingredient_id, quantity_used, unit_used, name')
+                                .eq('id', selectedAddon.addon_id)
+                                .single();
+
+                            // Se addon tem ingrediente vinculado
+                            if (addonData?.ingredient_id && addonData.quantity_used) {
+                                // Buscar ingrediente
+                                const { data: ingredient } = await supabase
+                                    .from('ingredients')
+                                    .select('stock_quantity, unit, name')
+                                    .eq('id', addonData.ingredient_id)
+                                    .single();
+
+                                // Se ingrediente tem controle de estoque
+                                if (ingredient && ingredient.stock_quantity !== null) {
+                                    // Calcular quanto descontar (converter unidades se necessário)
+                                    let toDeduct = addonData.quantity_used * item.quantity;
+
+                                    // Conversão simples de unidades
+                                    if (addonData.unit_used && ingredient.unit && addonData.unit_used !== ingredient.unit) {
+                                        if (addonData.unit_used === 'kg' && ingredient.unit === 'g') toDeduct *= 1000;
+                                        else if (addonData.unit_used === 'g' && ingredient.unit === 'kg') toDeduct /= 1000;
+                                        else if (addonData.unit_used === 'l' && ingredient.unit === 'ml') toDeduct *= 1000;
+                                        else if (addonData.unit_used === 'ml' && ingredient.unit === 'l') toDeduct /= 1000;
+                                    }
+
+                                    const newStock = Math.max(0, ingredient.stock_quantity - toDeduct);
+
+                                    console.log(`  - ${addonData.name} (${ingredient.name}): ${ingredient.stock_quantity} → ${newStock} (${toDeduct} ${ingredient.unit})`);
+
+                                    // Atualizar estoque do ingrediente
+                                    await supabase
+                                        .from('ingredients')
+                                        .update({ stock_quantity: newStock })
+                                        .eq('id', addonData.ingredient_id);
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (stockError) {
+                console.error('Error updating stock:', stockError);
+                // Don't throw - order was created successfully
             }
 
             // Update customer data
@@ -357,94 +595,119 @@ const StoreMenu: React.FC = () => {
 
     const showLoyalty = loyaltySettings?.is_enabled && loyaltyLevels.length > 0;
 
+    // Get colors from visual settings or use defaults
+    const primaryColor = visualSettings?.primary_color || '#ea580c';
+    const secondaryColor = visualSettings?.secondary_color || '#dc2626';
+
     return (
         <div className="animate-fade-in min-h-screen bg-gray-50">
-            {/* Header */}
-            <div className="bg-gradient-to-br from-orange-500 via-red-500 to-pink-600 text-white px-4 py-6 relative overflow-hidden">
+            {/* Header - Banner decorativo */}
+            <div
+                className="text-white px-4 py-4 relative overflow-hidden"
+                style={{
+                    background: visualSettings?.banner_url
+                        ? `url(${visualSettings.banner_url})`
+                        : `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})`,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                    minHeight: '120px'
+                }}
+            >
                 <div className="absolute inset-0 bg-black/10"></div>
-                <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
 
-                <div className="relative z-10">
-                    <div className="flex items-center justify-between gap-3 mb-3">
-                        <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center text-2xl">
-                                🍽️
-                            </div>
-                            <div>
-                                <h1 className="text-xl font-black tracking-tight">{storeName}</h1>
-                                <p className="text-white/90 text-xs flex items-center gap-1">
-                                    <Star size={12} fill="currentColor" />
-                                    Peça online agora
-                                </p>
-                            </div>
-                        </div>
-
-                        {/* Status Badge */}
-                        {storeStatus && (
-                            <div className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 backdrop-blur-sm ${storeStatus.isOpen
-                                ? 'bg-green-500/90 text-white'
-                                : storeStatus.reason === 'pause'
-                                    ? 'bg-orange-500/90 text-white'
-                                    : 'bg-gray-900/80 text-white'
-                                }`}>
-                                <Clock size={14} />
-                                {storeStatus.isOpen
-                                    ? 'Aberto'
-                                    : storeStatus.reason === 'pause'
-                                        ? 'Em Pausa'
-                                        : 'Fechado'}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Loyalty Badge */}
-                    {showLoyalty && isLoggedIn && currentLevel && (
-                        <div className="mt-3">
-                            <CustomerLoyaltyBadge
-                                points={customerPoints}
-                                currentLevel={{
-                                    id: currentLevel.id,
-                                    name: currentLevel.name,
-                                    icon: currentLevel.icon,
-                                    color: currentLevel.color,
-                                    discountPercent: currentLevel.discount_percent,
-                                    pointsRequired: currentLevel.points_required
-                                }}
-                                nextLevel={nextLevel ? {
-                                    name: nextLevel.name,
-                                    icon: nextLevel.icon,
-                                    pointsRequired: nextLevel.points_required
-                                } : null}
-                                compact={true}
-                            />
-                        </div>
-                    )}
-
-                    {/* Login prompt if not logged in and loyalty is enabled */}
-                    {showLoyalty && !isLoggedIn && (
-                        <button
-                            onClick={() => navigate(`/menu/${storeId}/auth`)}
-                            className="mt-3 w-full bg-white/20 backdrop-blur-sm rounded-xl p-3 flex items-center gap-3 hover:bg-white/30 transition"
-                        >
-                            <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
-                                <Award size={20} />
-                            </div>
-                            <div className="flex-1 text-left">
-                                <p className="text-sm font-bold">Ganhe Pontos e Descontos!</p>
-                                <p className="text-xs opacity-80">Faça login para participar</p>
-                            </div>
-                            <ArrowRight size={18} />
-                        </button>
-                    )}
-
-                    {/* Status Message */}
+                <div className="relative z-10 flex justify-end">
+                    {/* Status Badge */}
                     {storeStatus && (
-                        <div className="mt-3 text-white/90 text-xs font-medium flex items-center gap-1.5">
-                            <Clock size={12} />
-                            {storeStatus.message}
+                        <div className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 backdrop-blur-sm ${storeStatus.isOpen
+                            ? 'bg-green-500/90 text-white'
+                            : storeStatus.reason === 'pause'
+                                ? 'bg-orange-500/90 text-white'
+                                : 'bg-gray-900/80 text-white'
+                            }`}>
+                            <Clock size={14} />
+                            {storeStatus.isOpen
+                                ? 'Aberto'
+                                : storeStatus.reason === 'pause'
+                                    ? 'Em Pausa'
+                                    : 'Fechado'}
                         </div>
                     )}
                 </div>
+            </div>
+
+            {/* Informações da Loja - Fora do banner */}
+            <div className="bg-white px-4 py-4 border-b border-gray-100 shadow-sm">
+                <div className="flex items-center gap-3 mb-3">
+                    {visualSettings?.logo_url ? (
+                        <img
+                            src={visualSettings.logo_url}
+                            alt={storeName}
+                            className="w-14 h-14 rounded-xl object-cover border-2 border-gray-100"
+                        />
+                    ) : (
+                        <div className="w-14 h-14 bg-gradient-to-br from-orange-100 to-red-100 rounded-xl flex items-center justify-center text-2xl border-2 border-gray-100">
+                            🍽️
+                        </div>
+                    )}
+                    <div className="flex-1">
+                        <h1 className="text-xl font-black text-gray-900 tracking-tight">
+                            {storeName}
+                        </h1>
+                        <p className="text-gray-500 text-xs flex items-center gap-1">
+                            <Star size={12} fill="currentColor" className="text-yellow-500" />
+                            Peça online agora
+                        </p>
+                    </div>
+                </div>
+
+                {/* Loyalty Badge */}
+                {showLoyalty && isLoggedIn && currentLevel && (
+                    <div className="mb-3">
+                        <CustomerLoyaltyBadge
+                            points={customerPoints}
+                            currentLevel={{
+                                id: currentLevel.id,
+                                name: currentLevel.name,
+                                icon: currentLevel.icon,
+                                color: currentLevel.color,
+                                discountPercent: currentLevel.discount_percent,
+                                pointsRequired: currentLevel.points_required
+                            }}
+                            nextLevel={nextLevel ? {
+                                name: nextLevel.name,
+                                icon: nextLevel.icon,
+                                pointsRequired: nextLevel.points_required
+                            } : null}
+                            compact={true}
+                            variant="light"
+                        />
+                    </div>
+                )}
+
+                {/* Login prompt if not logged in and loyalty is enabled */}
+                {showLoyalty && !isLoggedIn && (
+                    <button
+                        onClick={() => navigate(`/menu/${storeId}/auth`)}
+                        className="mb-3 w-full bg-gradient-to-r from-orange-50 to-red-50 border border-orange-200 rounded-xl p-3 flex items-center gap-3 hover:from-orange-100 hover:to-red-100 transition"
+                    >
+                        <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-red-500 rounded-full flex items-center justify-center">
+                            <Award size={20} className="text-white" />
+                        </div>
+                        <div className="flex-1 text-left">
+                            <p className="text-sm font-bold text-gray-900">Ganhe Pontos e Descontos!</p>
+                            <p className="text-xs text-gray-600">Faça login para participar</p>
+                        </div>
+                        <ArrowRight size={18} className="text-gray-400" />
+                    </button>
+                )}
+
+                {/* Status Message */}
+                {storeStatus && (
+                    <div className="flex items-center gap-1.5 text-xs text-gray-600">
+                        <Clock size={12} />
+                        {storeStatus.message}
+                    </div>
+                )}
             </div>
 
             <div className="px-3 pb-36 space-y-4">
@@ -464,7 +727,8 @@ const StoreMenu: React.FC = () => {
                 <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide -mx-3 px-3">
                     <button
                         onClick={() => setSelectedCategory('Todos')}
-                        className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all flex-shrink-0 ${selectedCategory === 'Todos' ? 'bg-gray-900 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200'}`}
+                        className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all flex-shrink-0 ${selectedCategory === 'Todos' ? 'text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200'}`}
+                        style={selectedCategory === 'Todos' ? { background: primaryColor } : {}}
                     >
                         🍴 Todos
                     </button>
@@ -472,7 +736,8 @@ const StoreMenu: React.FC = () => {
                         <button
                             key={cat}
                             onClick={() => setSelectedCategory(cat)}
-                            className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all flex-shrink-0 ${selectedCategory === cat ? 'bg-gray-900 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200'}`}
+                            className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all flex-shrink-0 ${selectedCategory === cat ? 'text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200'}`}
+                            style={selectedCategory === cat ? { background: primaryColor } : {}}
                         >
                             {cat}
                         </button>
@@ -488,9 +753,13 @@ const StoreMenu: React.FC = () => {
                     ) : (
                         filteredProducts.map(product => (
                             <div key={product.id} className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm active:scale-[0.98] transition-transform flex gap-3">
-                                <div className="w-20 h-20 bg-gradient-to-br from-orange-100 to-red-100 rounded-lg flex-shrink-0 flex items-center justify-center">
-                                    <span className="text-3xl">🍔</span>
-                                </div>
+                                {product.image_url ? (
+                                    <img src={product.image_url} alt={product.name} className="w-20 h-20 rounded-lg object-cover flex-shrink-0" />
+                                ) : (
+                                    <div className="w-20 h-20 bg-gradient-to-br from-orange-100 to-red-100 rounded-lg flex-shrink-0 flex items-center justify-center">
+                                        <span className="text-3xl">🍔</span>
+                                    </div>
+                                )}
                                 <div className="flex-1 min-w-0">
                                     <h3 className="font-bold text-gray-900 text-sm leading-tight mb-0.5">{product.name}</h3>
                                     {product.category && (
@@ -507,7 +776,11 @@ const StoreMenu: React.FC = () => {
                                                     <Minus size={12} />
                                                 </button>
                                                 <span className="font-bold text-xs w-5 text-center">{getQuantity(product.id)}</span>
-                                                <button onClick={() => addToCart(product.id)} className="w-6 h-6 flex items-center justify-center bg-gray-900 rounded text-white active:bg-black">
+                                                <button
+                                                    onClick={() => addToCart(product.id)}
+                                                    className="w-6 h-6 flex items-center justify-center rounded text-white"
+                                                    style={{ backgroundColor: primaryColor }}
+                                                >
                                                     <Plus size={12} />
                                                 </button>
                                             </div>
@@ -517,8 +790,9 @@ const StoreMenu: React.FC = () => {
                                                 disabled={storeStatus && !storeStatus.isOpen}
                                                 className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 ${storeStatus && !storeStatus.isOpen
                                                     ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                                    : 'bg-gray-900 text-white active:bg-black'
+                                                    : 'text-white'
                                                     }`}
+                                                style={storeStatus && storeStatus.isOpen ? { backgroundColor: primaryColor } : {}}
                                             >
                                                 {storeStatus && !storeStatus.isOpen ? (
                                                     'Fechado'
@@ -542,7 +816,11 @@ const StoreMenu: React.FC = () => {
             {
                 cart.length > 0 && (
                     <div className="fixed bottom-20 left-3 right-3 z-50">
-                        <button onClick={() => setShowCart(true)} className="w-full bg-gradient-to-r from-gray-900 to-black text-white p-4 rounded-xl shadow-2xl flex justify-between items-center active:scale-[0.98] transition-transform">
+                        <button
+                            onClick={() => setShowCart(true)}
+                            className="w-full text-white p-4 rounded-xl shadow-2xl flex justify-between items-center active:scale-[0.98] transition-transform"
+                            style={{ background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})` }}
+                        >
                             <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center relative">
                                     <ShoppingCart size={20} />
@@ -589,31 +867,66 @@ const StoreMenu: React.FC = () => {
                                     const product = products.find(p => p.id === item.productId);
                                     if (!product) return null;
                                     return (
-                                        <div key={item.productId} className="flex gap-3 bg-gray-50 p-3 rounded-xl">
-                                            <div className="w-16 h-16 bg-gradient-to-br from-orange-100 to-red-100 rounded-lg flex-shrink-0 flex items-center justify-center">
-                                                <span className="text-2xl">🍔</span>
-                                            </div>
+                                        <div key={item.id} className="flex gap-3 bg-gray-50 p-3 rounded-xl">
+                                            {product.image_url ? (
+                                                <img src={product.image_url} alt={product.name} className="w-16 h-16 rounded-lg object-cover flex-shrink-0" />
+                                            ) : (
+                                                <div className="w-16 h-16 bg-gradient-to-br from-orange-100 to-red-100 rounded-lg flex-shrink-0 flex items-center justify-center">
+                                                    <span className="text-2xl">🍔</span>
+                                                </div>
+                                            )}
                                             <div className="flex-1 min-w-0">
                                                 <h3 className="font-bold text-gray-900 text-sm mb-0.5 truncate">{product.name}</h3>
-                                                <p className="text-xs text-gray-500 mb-2">{formatCurrency(product.currentPrice)} cada</p>
+
+                                                {/* Show variation */}
+                                                {item.variation && (
+                                                    <p className="text-xs text-blue-600 font-medium">
+                                                        📦 {item.variation.name}
+                                                    </p>
+                                                )}
+
+                                                {/* Show addons */}
+                                                {item.selectedAddons && item.selectedAddons.length > 0 && (
+                                                    <div className="text-xs text-gray-600 mt-1">
+                                                        {item.selectedAddons.map((addon, idx) => (
+                                                            <span key={idx} className="block">
+                                                                + {addon.addon_name}
+                                                                {addon.price_adjustment > 0 && ` (+${formatCurrency(addon.price_adjustment)})`}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {/* Show notes */}
+                                                {item.notes && (
+                                                    <p className="text-xs text-gray-500 italic mt-1">
+                                                        💬 {item.notes}
+                                                    </p>
+                                                )}
+
+                                                <p className="text-xs text-gray-500 mb-2">{formatCurrency(item.totalPrice / item.quantity)} cada</p>
                                                 <div className="flex items-center gap-2">
                                                     <div className="flex items-center gap-1.5 bg-white rounded-lg p-1 border border-gray-200">
-                                                        <button onClick={() => removeFromCart(item.productId)} className="w-6 h-6 flex items-center justify-center rounded text-gray-600 active:bg-red-50 active:text-red-500">
+                                                        <button onClick={() => removeFromCart(item.id)} className="w-6 h-6 flex items-center justify-center rounded text-gray-600 active:bg-red-50 active:text-red-500">
                                                             <Minus size={12} />
                                                         </button>
                                                         <span className="font-bold text-xs w-6 text-center">{item.quantity}</span>
-                                                        <button onClick={() => addToCart(item.productId)} className="w-6 h-6 flex items-center justify-center bg-gray-900 rounded text-white active:bg-black">
+                                                        <button
+                                                            onClick={() => addToCart(item.productId)}
+                                                            className="w-6 h-6 flex items-center justify-center rounded text-white"
+                                                            style={{ backgroundColor: primaryColor }}
+                                                        >
                                                             <Plus size={12} />
                                                         </button>
                                                     </div>
-                                                    <button onClick={() => clearItemFromCart(item.productId)} className="text-red-500 text-[10px] font-bold flex items-center gap-1">
+                                                    <button onClick={() => clearItemFromCart(item.id)} className="text-red-500 text-[10px] font-bold flex items-center gap-1">
                                                         <Trash2 size={11} />
                                                         Remover
                                                     </button>
                                                 </div>
                                             </div>
                                             <div className="font-bold text-sm text-gray-900 self-start">
-                                                {formatCurrency(product.currentPrice * item.quantity)}
+                                                {formatCurrency(item.totalPrice)}
                                             </div>
                                         </div>
                                     );
@@ -672,8 +985,9 @@ const StoreMenu: React.FC = () => {
                                     }}
                                     className={`w-full py-4 rounded-xl font-bold text-base flex items-center justify-center gap-2 shadow-lg transition-colors ${storeStatus && !storeStatus.isOpen
                                         ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                        : 'bg-gradient-to-r from-green-600 to-emerald-600 text-white active:from-green-700 active:to-emerald-700'
+                                        : 'text-white'
                                         }`}
+                                    style={storeStatus && storeStatus.isOpen ? { background: `linear-gradient(135deg, #10b981, #059669)` } : {}}
                                 >
                                     {storeStatus && !storeStatus.isOpen ? 'Loja Fechada' : 'Finalizar Pedido'}
                                     {(!storeStatus || storeStatus.isOpen) && <ArrowRight size={20} />}
@@ -717,6 +1031,15 @@ const StoreMenu: React.FC = () => {
                     </div>
                 )
             }
+
+            {/* Customization Modal */}
+            {customizationModal.show && customizationModal.product && (
+                <ProductCustomizationModal
+                    product={customizationModal.product}
+                    onClose={() => setCustomizationModal({ show: false, product: null })}
+                    onAddToCart={handleAddCustomization}
+                />
+            )}
         </div >
     );
 };

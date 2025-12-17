@@ -35,6 +35,7 @@ export interface Product {
   ifood_id?: string;
   ifood_external_code?: string;
   ifood_status?: 'AVAILABLE' | 'UNAVAILABLE';
+  image_url?: string;
 }
 
 export interface FixedCost {
@@ -372,6 +373,601 @@ export interface UserIntegration {
   status: 'active' | 'error' | 'disconnected';
   last_synced_at?: string;
   error_message?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// --- Sistema de WhatsApp Business ---
+
+/**
+ * Configuração do WhatsApp Business Cloud API
+ */
+export interface WhatsAppConfig {
+  id: string;
+  user_id: string;
+  phone_number_id: string;
+  business_account_id: string;
+  access_token: string; // Criptografado
+  webhook_verify_token: string;
+  is_enabled: boolean;
+  status: 'active' | 'error' | 'disconnected';
+  last_tested_at?: string;
+  error_message?: string;
+
+  // Configurações de envio automático
+  auto_send_order_confirmed: boolean;
+  auto_send_order_preparing: boolean;
+  auto_send_order_ready: boolean;
+  auto_send_order_delivered: boolean;
+  auto_send_loyalty_points: boolean;
+
+  created_at?: string;
+  updated_at?: string;
+}
+
+/**
+ * Template de mensagem aprovado pelo Meta
+ */
+export interface WhatsAppTemplate {
+  id: string;
+  user_id: string;
+  name: string;
+  category: 'utility' | 'marketing' | 'authentication';
+  language: string;
+  status: 'pending' | 'approved' | 'rejected';
+  meta_template_id?: string;
+  template_body: any; // JSON do template
+  created_at?: string;
+  updated_at?: string;
+}
+
+/**
+ * Mensagem enviada via WhatsApp (log)
+ */
+export interface WhatsAppMessage {
+  id: string;
+  user_id: string;
+  customer_id?: string;
+  order_id?: string;
+  message_type: WhatsAppNotificationType;
+  template_name?: string;
+  recipient_phone: string;
+  whatsapp_message_id?: string;
+  whatsapp_conversation_id?: string;
+  status: 'pending' | 'sent' | 'delivered' | 'read' | 'failed';
+  sent_at?: string;
+  delivered_at?: string;
+  read_at?: string;
+  failed_at?: string;
+  error_code?: string;
+  error_message?: string;
+  message_content?: any;
+  created_at: string;
+}
+
+/**
+ * Tipos de notificação WhatsApp
+ */
+export type WhatsAppNotificationType =
+  | 'order_confirmed'
+  | 'order_preparing'
+  | 'order_ready'
+  | 'order_out_for_delivery'
+  | 'order_delivered'
+  | 'order_cancelled'
+  | 'loyalty_points_earned'
+  | 'loyalty_level_up'
+  | 'loyalty_points_expiring'
+  | 'marketing_promo'
+  | 'marketing_happy_hour'
+  | 'marketing_new_product'
+  | 'marketing_birthday'
+  | 'cart_abandoned'
+  | 'feedback_request'
+  | 'reservation_confirmed'
+  | 'reservation_reminder'
+  | 'item_unavailable'
+  | 'delivery_delay'
+  | 'ifood_order_received';
+
+/**
+ * Conversa de atendimento
+ */
+export interface WhatsAppConversation {
+  id: string;
+  user_id: string;
+  customer_id?: string;
+  customer_phone: string;
+  customer_name?: string;
+  whatsapp_conversation_id?: string;
+  status: 'open' | 'closed' | 'archived';
+  assigned_to?: string;
+  last_message_at: string;
+  last_message_from?: 'customer' | 'business';
+  created_at: string;
+  closed_at?: string;
+}
+
+/**
+ * Mensagem dentro de uma conversa
+ */
+export interface WhatsAppConversationMessage {
+  id: string;
+  conversation_id: string;
+  direction: 'inbound' | 'outbound';
+  message_type: 'text' | 'image' | 'document' | 'audio' | 'video' | 'location' | 'interactive';
+  content: {
+    text?: string;
+    media_url?: string;
+    caption?: string;
+    filename?: string;
+    latitude?: number;
+    longitude?: number;
+    [key: string]: any;
+  };
+  whatsapp_message_id?: string;
+  status?: 'sent' | 'delivered' | 'read' | 'failed';
+  sent_by?: string;
+  created_at: string;
+}
+
+/**
+ * Métricas diárias do WhatsApp
+ */
+export interface WhatsAppMetrics {
+  id: string;
+  user_id: string;
+  date: string;
+  messages_sent: number;
+  messages_delivered: number;
+  messages_read: number;
+  messages_failed: number;
+  utility_messages: number;
+  marketing_messages: number;
+  orders_from_whatsapp: number;
+  total_revenue_attributed: number;
+  conversations_started: number;
+  customer_replies: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/**
+ * Payload para enviar mensagem template
+ */
+export interface WhatsAppTemplatePayload {
+  recipientPhone: string;
+  templateName: string;
+  parameters: (string | number)[];
+  notificationType: WhatsAppNotificationType;
+  orderId?: string;
+  customerId?: string;
+}
+
+// ============================================
+// SISTEMA DE CARDÁPIO VIRTUAL PROFISSIONAL
+// ============================================
+
+/**
+ * Grupo de Complementos/Adicionais
+ */
+export interface ProductAddonGroup {
+  id: string;
+  user_id: string;
+  name: string; // Ex: "Adicionais", "Remover Ingredientes", "Molhos"
+  description?: string;
+  is_required: boolean; // Cliente DEVE escolher algo deste grupo?
+  min_selections: number; // Mínimo de seleções
+  max_selections: number | null; // Máximo de seleções (null = ilimitado)
+  display_order: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/**
+ * Complemento/Adicional individual
+ */
+export interface ProductAddon {
+  id: string;
+  group_id: string;
+  name: string; // Ex: "Bacon Extra", "Sem Cebola", "Molho Barbecue"
+  price_adjustment: number; // Valor adicional (pode ser negativo para remoções)
+  is_available: boolean;
+
+  // Vínculo com ingrediente do estoque (opcional)
+  ingredient_id?: string | null; // Se preenchido, desconta do estoque deste ingrediente
+  quantity_used?: number | null; // Quantidade a descontar (ex: 100 para 100g)
+  unit_used?: 'g' | 'kg' | 'ml' | 'l' | 'un' | null; // Unidade de medida
+
+  display_order: number;
+  created_at?: string;
+}
+
+/**
+ * Vínculo entre produto e grupo de complementos
+ */
+export interface ProductAddonGroupLink {
+  id: string;
+  product_id: string;
+  group_id: string;
+  created_at?: string;
+}
+
+/**
+ * Variação de Produto (tamanhos, volumes, etc)
+ */
+export interface ProductVariation {
+  id: string;
+  product_id: string;
+  name: string; // Ex: "300ml", "500ml", "1L", "Pizza Média", "Porção Família"
+  price: number;
+  is_default: boolean;
+  is_available: boolean;
+  stock_quantity?: number;
+  display_order: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/**
+ * Imagem de produto (múltiplas fotos)
+ */
+export interface ProductImage {
+  id: string;
+  product_id: string;
+  image_url: string;
+  is_primary: boolean; // Imagem principal
+  display_order: number;
+  created_at?: string;
+}
+
+/**
+ * Avaliação de Produto
+ */
+export interface ProductReview {
+  id: string;
+  product_id: string;
+  customer_id: string;
+  customer?: Customer; // Populated se necessário
+  order_id?: string;
+  rating: number; // 1-5 estrelas
+  comment?: string;
+  images?: string[]; // URLs de fotos da avaliação
+  is_approved: boolean; // Moderação
+  admin_response?: string; // Resposta da loja
+  admin_response_date?: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+/**
+ * Configurações Visuais da Loja
+ */
+export interface StoreVisualSettings {
+  id: string;
+  user_id: string;
+  logo_url?: string;
+  banner_url?: string;
+  favicon_url?: string;
+  primary_color: string; // Cor primária do tema
+  secondary_color: string; // Cor secundária
+  theme_mode: 'light' | 'dark' | 'auto';
+  font_family: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/**
+ * Informações de Contato e Redes Sociais
+ */
+export interface StoreContactInfo {
+  id: string;
+  user_id: string;
+  phone?: string;
+  whatsapp?: string;
+  email?: string;
+  address?: string;
+  address_number?: string;
+  address_complement?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
+  postal_code?: string;
+  latitude?: number;
+  longitude?: number;
+  instagram_url?: string;
+  facebook_url?: string;
+  website_url?: string;
+  delivery_info?: string; // Informações sobre entrega
+  payment_methods?: string[]; // ['pix', 'dinheiro', 'cartão']
+  created_at?: string;
+  updated_at?: string;
+}
+
+/**
+ * Promoção
+ */
+export interface Promotion {
+  id: string;
+  user_id: string;
+  name: string;
+  description?: string;
+  type: 'percentage' | 'fixed' | 'buy_x_get_y' | 'combo';
+  discount_value?: number; // Porcentagem ou valor fixo
+  buy_quantity?: number; // Para tipo "2x1" = compre 2
+  get_quantity?: number; // Ganhe 1
+  start_date?: string;
+  end_date?: string;
+  is_active: boolean;
+  min_purchase_amount?: number; // Valor mínimo para aplicar
+  max_discount_amount?: number; // Desconto máximo
+  created_at?: string;
+  updated_at?: string;
+}
+
+/**
+ * Vínculo entre promoção e produto
+ */
+export interface PromotionProduct {
+  id: string;
+  promotion_id: string;
+  product_id: string;
+  created_at?: string;
+}
+
+/**
+ * Cupom de Desconto
+ */
+export interface DiscountCoupon {
+  id: string;
+  user_id: string;
+  code: string; // Ex: "PRIMEIRACOMPRA", "NATAL2025"
+  description?: string;
+  type: 'percentage' | 'fixed';
+  discount_value: number;
+  min_purchase_amount: number;
+  max_discount_amount?: number;
+  max_uses?: number; // Limite de usos total
+  max_uses_per_customer: number;
+  valid_from?: string;
+  valid_until?: string;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/**
+ * Uso de Cupom (histórico)
+ */
+export interface CouponUsage {
+  id: string;
+  coupon_id: string;
+  customer_id: string;
+  order_id: string;
+  discount_applied: number;
+  created_at: string;
+}
+
+/**
+ * Combo de Produtos
+ */
+export interface ProductCombo {
+  id: string;
+  user_id: string;
+  name: string; // Ex: "Combo Família", "Pizza + Refrigerante"
+  description?: string;
+  image_url?: string;
+  combo_price: number;
+  original_price?: number; // Soma dos preços individuais
+  is_available: boolean;
+  created_at?: string;
+  updated_at?: string;
+  items?: ComboItem[]; // Populated se necessário
+}
+
+/**
+ * Item de um Combo
+ */
+export interface ComboItem {
+  id: string;
+  combo_id: string;
+  product_id: string;
+  product?: Product; // Populated se necessário
+  quantity: number;
+  variation_id?: string;
+  variation?: ProductVariation; // Populated se necessário
+  created_at?: string;
+}
+
+/**
+ * Produto Favorito do Cliente
+ */
+export interface CustomerFavorite {
+  id: string;
+  customer_id: string;
+  product_id: string;
+  product?: Product; // Populated se necessário
+  created_at: string;
+}
+
+/**
+ * Analytics de Produto
+ */
+export interface ProductAnalytics {
+  id: string;
+  product_id: string;
+  customer_id?: string;
+  action: 'view' | 'add_to_cart' | 'purchase' | 'favorite';
+  session_id?: string;
+  created_at: string;
+}
+
+/**
+ * Histórico de Buscas
+ */
+export interface SearchHistory {
+  id: string;
+  user_id: string;
+  customer_id?: string;
+  search_term: string;
+  results_count: number;
+  created_at: string;
+}
+
+/**
+ * Customizações em um item do pedido
+ */
+export interface OrderItemCustomization {
+  variation_id?: string;
+  variation_name?: string;
+  variation_price?: number;
+  selected_addons?: Array<{
+    addon_id: string;
+    group_id: string;
+    group_name: string;
+    addon_name: string;
+    price_adjustment: number;
+  }>;
+  item_notes?: string;
+}
+
+/**
+ * Extensão do Product com novos campos
+ */
+export interface ProductExtended extends Product {
+  is_featured?: boolean;
+  is_available?: boolean;
+  badges?: string[]; // ['novo', 'promocao', 'mais_vendido']
+  tags?: string[]; // ['vegetariano', 'vegano', 'sem_gluten', 'picante']
+  view_count?: number;
+  purchase_count?: number;
+  average_rating?: number;
+  review_count?: number;
+  preparation_time?: number; // Minutos
+  calories?: number;
+  allergens?: string[];
+
+  // Populated relationships
+  variations?: ProductVariation[];
+  images?: ProductImage[];
+  addon_groups?: ProductAddonGroup[];
+  reviews?: ProductReview[];
+  promotions?: Promotion[];
+}
+
+/**
+ * Resposta da validação de cupom
+ */
+export interface CouponValidationResult {
+  is_valid: boolean;
+  discount_amount: number;
+  message: string;
+  coupon_id?: string;
+}
+
+/**
+ * Badge de produto (novo, promoção, etc)
+ */
+export type ProductBadge = 'novo' | 'promocao' | 'mais_vendido' | 'destaque' | 'exclusivo';
+
+/**
+ * Tag de produto (filtros alimentares)
+ */
+export type ProductTag =
+  | 'vegetariano'
+  | 'vegano'
+  | 'sem_gluten'
+  | 'sem_lactose'
+  | 'picante'
+  | 'picante_suave'
+  | 'picante_medio'
+  | 'picante_forte'
+  | 'kids'
+  | 'light'
+  | 'diet'
+  | 'organico'
+  | 'fit';
+
+/**
+ * Dados de checkout com customizações
+ */
+export interface CheckoutDataExtended {
+  deliveryType: 'delivery' | 'pickup';
+  deliveryAddress?: string;
+  phone: string;
+  paymentMethod: PaymentMethod;
+  notes?: string;
+  coupon_code?: string;
+  use_loyalty_points?: number;
+}
+
+/**
+ * Item do carrinho com customizações
+ */
+export interface CartItem {
+  productId: string;
+  product?: Product;
+  quantity: number;
+  variation_id?: string;
+  variation?: ProductVariation;
+  selected_addons?: Array<{
+    addon_id: string;
+    group_id: string;
+    group_name: string;
+    addon_name: string;
+    price_adjustment: number;
+  }>;
+  item_notes?: string;
+  unit_price: number; // Preço base
+  total_price: number; // Preço com adicionais
+}
+
+// --- FASE 3: Sistema de Complementos e Variações ---
+
+/**
+ * Grupo de complementos/adicionais (ex: "Adicionais", "Remover", "Molhos")
+ */
+export interface ProductAddonGroup {
+  id: string;
+  user_id: string;
+  name: string; // Ex: "Adicionais", "Remover"
+  is_required: boolean; // Se é obrigatório escolher
+  min_selections: number; // Mínimo de seleções
+  max_selections: number; // Máximo de seleções
+  display_order: number;
+  created_at?: string;
+  updated_at?: string;
+  product_addons?: ProductAddon[]; // Relação com os complementos
+}
+
+/**
+ * Complemento individual (ex: "Bacon Extra", "Sem Cebola")
+ */
+export interface ProductAddon {
+  id: string;
+  group_id: string;
+  user_id: string;
+  name: string; // Ex: "Bacon Extra", "Queijo Extra"
+  price_adjustment: number; // Quanto adiciona/remove do preço (+5.00, -2.00, 0.00)
+  is_available: boolean;
+  display_order: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/**
+ * Variação de produto (ex: tamanho, volume)
+ */
+export interface ProductVariation {
+  id: string;
+  product_id: string | null;
+  user_id: string;
+  name: string; // Ex: "300ml", "500ml", "1L", "P", "M", "G"
+  price: number; // Preço específico desta variação
+  sku?: string; // Código SKU opcional
+  stock_quantity?: number | null; // Estoque individual
+  is_available: boolean;
+  display_order: number;
   created_at?: string;
   updated_at?: string;
 }

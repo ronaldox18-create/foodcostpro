@@ -2,12 +2,20 @@ import React from 'react';
 import { Bell, X, User, Phone, CheckCircle, XCircle, ShoppingBag } from 'lucide-react';
 import { formatCurrency } from '../utils/calculations';
 
+interface SelectedAddon {
+    addon_id: string;
+    addon_name: string;
+    group_name: string;
+    price_adjustment: number;
+}
+
 interface OrderItem {
     product_id: string;
     product_name: string;
     quantity: number;
     price: number;
     total: number;
+    selected_addons?: SelectedAddon[];
 }
 
 interface Order {
@@ -110,23 +118,59 @@ const NewOrderModal: React.FC<NewOrderModalProps> = ({ order, onAccept, onReject
                         </div>
 
                         {order.items && order.items.length > 0 ? (
-                            <div className="space-y-2">
+                            <div className="space-y-3">
                                 {order.items.map((item, idx) => (
-                                    <div key={idx} className="bg-gray-50 border border-gray-200 p-3 rounded-xl flex justify-between items-start">
-                                        <div className="flex-1">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <span className="w-6 h-6 bg-orange-500 text-white rounded-full flex items-center justify-center text-xs font-black">
-                                                    {item.quantity}
-                                                </span>
-                                                <span className="font-bold text-gray-900">{item.product_name}</span>
+                                    <div key={idx} className="bg-white border-2 border-gray-200 rounded-2xl overflow-hidden hover:border-orange-300 transition">
+                                        {/* Item Header */}
+                                        <div className="bg-gradient-to-r from-orange-50 to-red-50 p-4 flex justify-between items-start border-b border-gray-200">
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className="w-7 h-7 bg-gradient-to-br from-orange-500 to-red-500 text-white rounded-full flex items-center justify-center text-sm font-black shadow-md">
+                                                        {item.quantity}
+                                                    </span>
+                                                    <span className="font-black text-gray-900 text-lg">{item.product_name}</span>
+                                                </div>
+                                                <p className="text-xs text-gray-600 ml-9">
+                                                    {formatCurrency(item.price)} cada
+                                                </p>
                                             </div>
-                                            <p className="text-xs text-gray-500 ml-8">
-                                                {formatCurrency(item.price)} cada
-                                            </p>
+                                            <div className="text-right">
+                                                <p className="font-black text-gray-900 text-xl">{formatCurrency(item.total)}</p>
+                                            </div>
                                         </div>
-                                        <div className="text-right">
-                                            <p className="font-black text-gray-900">{formatCurrency(item.total)}</p>
-                                        </div>
+
+                                        {/* Complementos/Addons */}
+                                        {item.selected_addons && item.selected_addons.length > 0 && (
+                                            <div className="bg-yellow-50 p-3 border-t border-yellow-200">
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <span className="text-xs font-bold text-yellow-700 uppercase tracking-wide">
+                                                        ➕ Complementos ({item.selected_addons.length})
+                                                    </span>
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    {item.selected_addons.map((addon, addonIdx) => (
+                                                        <div key={addonIdx} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-yellow-200">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="w-1.5 h-1.5 bg-yellow-500 rounded-full"></span>
+                                                                <span className="text-sm font-semibold text-gray-800">
+                                                                    {addon.addon_name}
+                                                                </span>
+                                                                {addon.group_name && (
+                                                                    <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                                                                        {addon.group_name}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            {addon.price_adjustment > 0 && (
+                                                                <span className="text-xs font-bold text-green-600">
+                                                                    +{formatCurrency(addon.price_adjustment)}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>

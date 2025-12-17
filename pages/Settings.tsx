@@ -4,11 +4,12 @@ import {
   Save, Store, DollarSign, Globe, Printer, Bell, Zap, TrendingUp,
   Percent, Calculator, FileText, Mail, Phone, MapPin, CreditCard,
   Clock, AlertCircle, CheckCircle, Settings as SettingsIcon, Loader2,
-  Info, ChevronRight, BarChart3, Package, Users, Lock, Radio, RefreshCw, XCircle
+  Info, ChevronRight, BarChart3, Package, Users, Lock, Radio, RefreshCw, XCircle, Database, Image as ImageIcon
 } from 'lucide-react';
 import { supabase } from '../utils/supabaseClient';
 import PlanGuard from '../components/PlanGuard';
 import { IntegrationService } from '../services/integrations';
+import WhatsAppSettings from '../components/WhatsAppSettings';
 
 type TabType = 'business' | 'pricing' | 'system' | 'pdv' | 'notifications' | 'integrations';
 
@@ -93,6 +94,83 @@ const Settings: React.FC = () => {
   const [ifoodStatus, setIfoodStatus] = useState<'connected' | 'disconnected' | 'error'>('disconnected');
   const [testingConnection, setTestingConnection] = useState(false);
   const [syncLogs, setSyncLogs] = useState<any[]>([]);
+
+  // Demo Data State
+  const [generatingImages, setGeneratingImages] = useState(false);
+
+  const handleGenerateExampleImages = async () => {
+    if (!confirm('Isso irá atualizar as fotos dos produtos que ainda não possuem imagem. Deseja continuar?')) return;
+
+    setGeneratingImages(true);
+    try {
+      // Buscar usuário autenticado
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Usuário não autenticado');
+
+      // Buscar apenas produtos do usuário
+      const { data: products, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      let count = 0;
+
+      const IMAGES = {
+        burger: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?fm=jpg&w=800&fit=max',
+        pizza: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?fm=jpg&w=800&fit=max',
+        hotdog: 'https://images.unsplash.com/photo-1612392062798-2307c8975a78?fm=jpg&w=800&fit=max',
+        drink: 'https://images.unsplash.com/photo-1437418747212-8d9709afab22?fm=jpg&w=800&fit=max',
+        fries: 'https://images.unsplash.com/photo-1573080496982-b9418e624310?fm=jpg&w=800&fit=max',
+        acai: 'https://images.unsplash.com/photo-1590301157890-4810ed352733?fm=jpg&w=800&fit=max',
+        icecream: 'https://images.unsplash.com/photo-1563805042-7684c019e1cb?fm=jpg&w=800&fit=max',
+        tapioca: 'https://images.unsplash.com/photo-1604085572504-a392ddf0d86a?fm=jpg&w=800&fit=max',
+        dessert: 'https://images.unsplash.com/photo-1551024601-bec78aea704b?fm=jpg&w=800&fit=max',
+        salad: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?fm=jpg&w=800&fit=max',
+        default: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?fm=jpg&w=800&fit=max'
+      };
+
+      for (const product of products) {
+        // Atualizar apenas se não houver imagem
+        if (!product.image_url) {
+          const text = (product.name + ' ' + (product.category || '')).toLowerCase();
+          let imageUrl = IMAGES.default;
+
+          if (text.includes('hamburguer') || text.includes('burger') || text.includes('x-') || text.includes('smash') || text.includes('bacon'))
+            imageUrl = IMAGES.burger;
+          else if (text.includes('pizza') || text.includes('calabresa') || text.includes('mussarela'))
+            imageUrl = IMAGES.pizza;
+          else if (text.includes('hot') || text.includes('dog') || text.includes('salsicha'))
+            imageUrl = IMAGES.hotdog;
+          else if (text.includes('bebida') || text.includes('coca') || text.includes('suco') || text.includes('refrigerante') || text.includes('água') || text.includes('agua') || text.includes('milkshake'))
+            imageUrl = IMAGES.drink;
+          else if (text.includes('batata') || text.includes('frita') || text.includes('porção'))
+            imageUrl = IMAGES.fries;
+          else if (text.includes('açaí') || text.includes('acai'))
+            imageUrl = IMAGES.acai;
+          else if (text.includes('sorvete') || text.includes('sundae') || text.includes('picolé') || text.includes('picole'))
+            imageUrl = IMAGES.icecream;
+          else if (text.includes('tapioca'))
+            imageUrl = IMAGES.tapioca;
+          else if (text.includes('sobremesa') || text.includes('doce') || text.includes('bolo') || text.includes('pudim') || text.includes('chocolate'))
+            imageUrl = IMAGES.dessert;
+          else if (text.includes('salada') || text.includes('fitness') || text.includes('natural'))
+            imageUrl = IMAGES.salad;
+
+          await supabase.from('products').update({ image_url: imageUrl }).eq('id', product.id);
+          count++;
+        }
+      }
+
+      setMsg({ type: 'success', text: `✅ Imagens geradas para ${count} produtos com sucesso!` });
+    } catch (error: any) {
+      console.error("Error generating images:", error);
+      setMsg({ type: 'error', text: '❌ Erro ao gerar imagens: ' + error.message });
+    } finally {
+      setGeneratingImages(false);
+    }
+  };
 
   // Fetch Logs
   useEffect(() => {
@@ -546,6 +624,33 @@ const Settings: React.FC = () => {
                   </select>
                 </div>
               </div>
+
+              {/* Demo Data Section */}
+              <div className="border-t border-gray-200 pt-6">
+                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                  <Database size={20} className="text-purple-600" />
+                  Dados de Demonstração
+                </h3>
+                <div className="bg-purple-50 rounded-xl p-5 border border-purple-200">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h4 className="font-bold text-purple-900">Gerar Imagens de Exemplo</h4>
+                      <p className="text-sm text-purple-700 mt-1">
+                        Preenche produtos sem foto com imagens de alta qualidade baseadas no nome/categoria.
+                        Útil para testar o cardápio digital.
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleGenerateExampleImages}
+                      disabled={generatingImages}
+                      className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-purple-700 transition shadow-sm disabled:opacity-50"
+                    >
+                      {generatingImages ? <Loader2 size={16} className="animate-spin" /> : <ImageIcon size={16} />}
+                      {generatingImages ? 'Gerando...' : 'Gerar Imagens'}
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
@@ -879,6 +984,11 @@ const Settings: React.FC = () => {
                   </div>
                 </PlanGuard>
 
+                {/* WhatsApp Business Integration */}
+                <PlanGuard feature="integrations" showLock={true}>
+                  <WhatsAppSettings />
+                </PlanGuard>
+
                 {/* Other Integrations (Coming Soon) */}
                 <div className="space-y-6">
                   <div className="bg-gray-50 rounded-2xl p-6 border border-gray-200 opacity-75">
@@ -889,18 +999,6 @@ const Settings: React.FC = () => {
                       <div>
                         <h3 className="font-bold text-gray-900">Mercado Pago</h3>
                         <p className="text-sm text-gray-600">Pagamentos online (Em breve)</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-gray-50 rounded-2xl p-6 border border-gray-200 opacity-75">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="p-3 bg-green-100 rounded-xl">
-                        <Zap className="w-6 h-6 text-green-600" />
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-gray-900">WhatsApp Business</h3>
-                        <p className="text-sm text-gray-600">Notificações automáticas (Em breve)</p>
                       </div>
                     </div>
                   </div>

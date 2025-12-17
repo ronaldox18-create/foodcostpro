@@ -18,10 +18,12 @@
     "autoprefixer": "^10.4.22",
     "lucide-react": "^0.344.0",
     "postcss": "^8.5.6",
+    "qrcode": "^1.5.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-markdown": "^9.0.1",
     "react-router-dom": "^6.22.3",
+    "react-to-print": "^3.2.0",
     "recharts": "^2.12.2",
     "tailwindcss": "^4.1.17"
   },

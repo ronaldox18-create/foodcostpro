@@ -365,7 +365,8 @@ export const OrderNotificationProvider: React.FC<{ children: React.ReactNode }> 
                     productName: item.product_name,
                     quantity: item.quantity,
                     unitPrice: item.price,
-                    total: item.total
+                    total: item.total,
+                    selectedAddons: (item as any).selected_addons || []
                 }));
                 await handleStockUpdate(itemsToDeduct);
             }
