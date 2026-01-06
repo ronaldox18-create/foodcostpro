@@ -20,11 +20,26 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Verificar variáveis de ambiente
+console.log('🔍 Verificando variáveis de ambiente...');
+console.log('VITE_SUPABASE_URL:', process.env.VITE_SUPABASE_URL ? 'SET ✅' : 'MISSING ❌');
+console.log('VITE_SUPABASE_ANON_KEY:', process.env.VITE_SUPABASE_ANON_KEY ? 'SET ✅' : 'MISSING ❌');
+console.log('PORT:', process.env.PORT || '3001');
+console.log('NODE_ENV:', process.env.NODE_ENV || 'development');
+
+if (!process.env.VITE_SUPABASE_URL || !process.env.VITE_SUPABASE_ANON_KEY) {
+    console.error('❌ ERRO: Variáveis de ambiente do Supabase não configuradas!');
+    console.error('Configure VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY no Railway');
+    process.exit(1);
+}
+
 // Supabase
 const supabase = createClient(
-    process.env.VITE_SUPABASE_URL || 'YOUR_SUPABASE_URL',
-    process.env.VITE_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_KEY'
+    process.env.VITE_SUPABASE_URL,
+    process.env.VITE_SUPABASE_ANON_KEY
 );
+
+console.log('✅ Supabase client criado com sucesso!');
 
 // Store ativo de sockets por usuário
 const activeSockets = new Map();
