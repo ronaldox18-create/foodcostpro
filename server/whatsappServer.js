@@ -20,11 +20,26 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// DEBUG: Listar TODAS as variáveis de ambiente disponíveis
+console.log('🔍 ========================================');
+console.log('📋 TODAS AS VARIÁVEIS DE AMBIENTE:');
+console.log('🔍 ========================================');
+Object.keys(process.env).sort().forEach(key => {
+    // Não mostrar valores sensíveis completos
+    const value = process.env[key];
+    if (key.includes('KEY') || key.includes('SECRET') || key.includes('PASSWORD')) {
+        console.log(`${key}: ${value ? value.substring(0, 20) + '...' : 'EMPTY'}`);
+    } else {
+        console.log(`${key}: ${value}`);
+    }
+});
+console.log('🔍 ========================================\n');
+
 // Verificar variáveis de ambiente (suporta com ou sem VITE_)
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
-console.log('🔍 Verificando variáveis de ambiente...');
+console.log('🔍 Verificando variáveis Supabase...');
 console.log('SUPABASE_URL:', SUPABASE_URL ? 'SET ✅' : 'MISSING ❌');
 console.log('SUPABASE_ANON_KEY:', SUPABASE_KEY ? 'SET ✅' : 'MISSING ❌');
 console.log('PORT:', process.env.PORT || '3001');
