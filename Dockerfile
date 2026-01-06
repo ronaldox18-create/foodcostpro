@@ -7,17 +7,20 @@ RUN apk add --no-cache git python3 make g++
 # Diretório de trabalho
 WORKDIR /app
 
-# Copiar package.json do servidor
-COPY server/package.json ./
+# Copiar todo o projeto primeiro
+COPY package*.json ./
+COPY server/package.json ./server/
 
-# Instalar dependências
+# Instalar dependências do servidor
+WORKDIR /app/server
 RUN npm install --production
 
-# Copiar código do servidor
-COPY server/ ./
+# Voltar para root e copiar tudo
+WORKDIR /app
+COPY . .
 
-# Copiar .env (Railway vai sobrescrever com variáveis)
-COPY .env* ./
+# Setar working directory para server
+WORKDIR /app/server
 
 # Expor porta
 EXPOSE 3001
