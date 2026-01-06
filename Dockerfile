@@ -1,6 +1,9 @@
 # WhatsApp Bot Backend - Railway Deploy
 FROM node:18-alpine
 
+# Instalar git e python (necessários para Baileys)
+RUN apk add --no-cache git python3 make g++
+
 # Diretório de trabalho
 WORKDIR /app
 
