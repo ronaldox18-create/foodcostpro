@@ -20,24 +20,26 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Verificar variáveis de ambiente
+// Verificar variáveis de ambiente (suporta com ou sem VITE_)
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+
 console.log('🔍 Verificando variáveis de ambiente...');
-console.log('VITE_SUPABASE_URL:', process.env.VITE_SUPABASE_URL ? 'SET ✅' : 'MISSING ❌');
-console.log('VITE_SUPABASE_ANON_KEY:', process.env.VITE_SUPABASE_ANON_KEY ? 'SET ✅' : 'MISSING ❌');
+console.log('SUPABASE_URL:', SUPABASE_URL ? 'SET ✅' : 'MISSING ❌');
+console.log('SUPABASE_ANON_KEY:', SUPABASE_KEY ? 'SET ✅' : 'MISSING ❌');
 console.log('PORT:', process.env.PORT || '3001');
 console.log('NODE_ENV:', process.env.NODE_ENV || 'development');
 
-if (!process.env.VITE_SUPABASE_URL || !process.env.VITE_SUPABASE_ANON_KEY) {
+if (!SUPABASE_URL || !SUPABASE_KEY) {
     console.error('❌ ERRO: Variáveis de ambiente do Supabase não configuradas!');
-    console.error('Configure VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY no Railway');
+    console.error('Configure no Railway:');
+    console.error('  SUPABASE_URL');
+    console.error('  SUPABASE_ANON_KEY');
     process.exit(1);
 }
 
 // Supabase
-const supabase = createClient(
-    process.env.VITE_SUPABASE_URL,
-    process.env.VITE_SUPABASE_ANON_KEY
-);
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 console.log('✅ Supabase client criado com sucesso!');
 
