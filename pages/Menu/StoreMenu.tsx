@@ -535,6 +535,71 @@ const StoreMenu: React.FC = () => {
                 // Don't throw - order was created successfully
             }
 
+            // ========== REGISTRAR MOVIMENTAÇÃO DE ESTOQUE ==========
+            try {
+                const user = await supabase.auth.getUser();
+                if (!user.data.user) return;
+
+                console.log('📊 Registrando movimentações de estoque...');
+
+                // Para cada item do pedido
+                for (const item of cart) {
+                    const product = products.find(p => p.id === item.productId);
+
+                    // 1. Registrar desconto da RECEITA
+                    if (product) {
+                        const { data: recipeItems } = await supabase
+                            .from('product_recipes')
+                            .select('ingredient_id, quantity_needed, unit')
+                            .eq('product_id', product.id);
+
+                        if (recipeItems && recipeItems.length > 0) {
+                            for (const recipeItem of recipeItems) {
+                                await supabase.from('stock_movements').insert({
+                                    user_id: user.data.user.id,
+                                    ingredient_id: recipeItem.ingredient_id,
+                                    type: 'sale',
+                                    quantity: -(recipeItem.quantity_needed * item.quantity),
+                                    unit: recipeItem.unit,
+                                    reason: `Venda: ${item.quantity}× ${product.name}${item.variation ? ` (${item.variation.name})` : ''}`,
+                                    order_id: orderData.id,
+                                    product_id: product.id
+                                });
+                            }
+                        }
+                    }
+
+                    // 2. Registrar desconto dos COMPLEMENTOS
+                    if (item.selectedAddons && item.selectedAddons.length > 0) {
+                        for (const selectedAddon of item.selectedAddons) {
+                            const { data: addonData } = await supabase
+                                .from('product_addons')
+                                .select('ingredient_id, quantity_used, unit_used, name')
+                                .eq('id', selectedAddon.addon_id)
+                                .single();
+
+                            if (addonData && addonData.ingredient_id && addonData.quantity_used) {
+                                await supabase.from('stock_movements').insert({
+                                    user_id: user.data.user.id,
+                                    ingredient_id: addonData.ingredient_id,
+                                    type: 'sale',
+                                    quantity: -(addonData.quantity_used * item.quantity),
+                                    unit: addonData.unit_used || 'un',
+                                    reason: `Venda: ${item.quantity}× ${addonData.name} (complemento)`,
+                                    order_id: orderData.id,
+                                    addon_id: selectedAddon.addon_id
+                                });
+                            }
+                        }
+                    }
+                }
+
+                console.log('✅ Movimentações registradas com sucesso!');
+            } catch (movementError) {
+                console.error('Error logging stock movements:', movementError);
+                // Não bloqueia a venda se falhar o registro
+            }
+
             // Update customer data
             if (checkoutData.phone || checkoutData.deliveryAddress) {
                 await supabase

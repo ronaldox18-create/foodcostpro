@@ -26,6 +26,8 @@ import AllOrders from './pages/AllOrders'; // Nova Página Unificada
 import BusinessHoursAdvanced from './pages/BusinessHoursAdvanced'; // Horários de Funcionamento Avançado
 import LoyaltySettings from './pages/LoyaltySettings'; // Sistema de Fidelidade
 import PDV from './pages/PDV'; // Sistema de PDV (Ponto de Venda)
+import StockMovements from './pages/StockMovements'; // Histórico de Movimentação
+import WhatsAppBotSetup from './pages/WhatsAppBotSetup'; // WhatsApp Bot - 100% Grátis
 
 // Menu Pages
 import MenuLayout from './pages/Menu/MenuLayout';
@@ -80,8 +82,10 @@ const AppRoutes: React.FC = () => {
       <Route path="/menu-manager" element={<PrivateLayout><MenuManager /></PrivateLayout>} />
       <Route path="/menu-orders" element={<PrivateLayout><MenuOrders /></PrivateLayout>} />
       <Route path="/ingredients" element={<PrivateLayout><Ingredients /></PrivateLayout>} />
+      <Route path="/stock-movements" element={<PrivateLayout><StockMovements /></PrivateLayout>} />
       <Route path="/inventory" element={<PrivateLayout><Inventory /></PrivateLayout>} />
       <Route path="/expenses" element={<PrivateLayout><Expenses /></PrivateLayout>} />
+      <Route path="/whatsapp-bot" element={<PrivateLayout><WhatsAppBotSetup /></PrivateLayout>} />
       <Route path="/settings" element={<PrivateLayout><Settings /></PrivateLayout>} />
       <Route path="/business-hours" element={<PrivateLayout><BusinessHoursAdvanced /></PrivateLayout>} />
       <Route path="/loyalty-settings" element={<PrivateLayout><LoyaltySettings /></PrivateLayout>} />

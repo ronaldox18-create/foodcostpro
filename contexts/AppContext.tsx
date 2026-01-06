@@ -504,7 +504,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           }
         }
 
-        // 3. Descontar estoque de COMPLEMENTOS (addons vinculados a ingredientes)
+        // 3. Descontar estoque de COMPLEMENTOS (addons são SEMPRE extras e devem ser descontados)
         if ((item as any).selectedAddons && (item as any).selectedAddons.length > 0) {
           console.log(`🧩 Descontando complementos (${(item as any).selectedAddons.length})`);
 

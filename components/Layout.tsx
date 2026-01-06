@@ -3,7 +3,7 @@ import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, ShoppingBasket, ChefHat, Settings, Menu, Landmark, Users, ClipboardList, Boxes, Sparkles, LogOut, User as UserIcon, LayoutGrid, Smartphone, Tag, PackageCheck, Clock, Crown, CreditCard } from 'lucide-react';
+import { LayoutDashboard, ShoppingBasket, ChefHat, Settings, Menu, Landmark, Users, ClipboardList, Boxes, Sparkles, LogOut, User as UserIcon, LayoutGrid, Smartphone, Tag, PackageCheck, Clock, Crown, CreditCard, History, MessageCircle } from 'lucide-react';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -75,6 +75,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           <NavItem to="/menu-manager" icon={Smartphone} label="Cardápio Virtual" active={location.pathname === '/menu-manager'} />
           <NavItem to="/inventory" icon={Boxes} label="Estoque" active={location.pathname === '/inventory'} />
           <NavItem to="/ingredients" icon={ShoppingBasket} label="Ingredientes" active={location.pathname === '/ingredients'} />
+          <NavItem to="/stock-movements" icon={History} label="Histórico" active={location.pathname === '/stock-movements'} />
           <NavItem to="/expenses" icon={Landmark} label="Despesas Fixas" active={location.pathname === '/expenses'} />
 
           <div className="pt-6 pb-2 px-2">
@@ -82,6 +83,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           </div>
           <NavItem to="/account" icon={UserIcon} label="Minha Conta" active={location.pathname === '/account'} />
           <NavItem to="/settings" icon={Settings} label="Configurações" active={location.pathname === '/settings'} />
+          <NavItem to="/whatsapp-bot" icon={MessageCircle} label="WhatsApp Bot 🆓" active={location.pathname === '/whatsapp-bot'} highlight={true} />
           <NavItem to="/business-hours" icon={Clock} label="Horários" active={location.pathname === '/business-hours'} />
           <NavItem to="/loyalty-settings" icon={Crown} label="Programa de Fidelidade" active={location.pathname === '/loyalty-settings'} />
         </nav>
@@ -128,9 +130,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               <NavItem to="/menu-manager" icon={Smartphone} label="Cardápio Virtual" active={location.pathname === '/menu-manager'} />
               <NavItem to="/inventory" icon={Boxes} label="Estoque" active={location.pathname === '/inventory'} />
               <NavItem to="/ingredients" icon={ShoppingBasket} label="Ingredientes" active={location.pathname === '/ingredients'} />
+              <NavItem to="/stock-movements" icon={History} label="Histórico" active={location.pathname === '/stock-movements'} />
               <NavItem to="/expenses" icon={Landmark} label="Despesas" active={location.pathname === '/expenses'} />
               <NavItem to="/account" icon={UserIcon} label="Minha Conta" active={location.pathname === '/account'} />
               <NavItem to="/settings" icon={Settings} label="Configurações" active={location.pathname === '/settings'} />
+              <NavItem to="/whatsapp-bot" icon={MessageCircle} label="WhatsApp Bot 🆓" active={location.pathname === '/whatsapp-bot'} highlight={true} />
               <NavItem to="/business-hours" icon={Clock} label="Horários" active={location.pathname === '/business-hours'} />
               <NavItem to="/loyalty-settings" icon={Crown} label="Programa de Fidelidade" active={location.pathname === '/loyalty-settings'} />
               <button onClick={signOut} className="w-full text-left p-4 text-red-600 font-medium">Sair</button>

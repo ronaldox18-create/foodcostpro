@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>WhatsApp Bot - Teste Direto</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+
+        button {
+            padding: 15px 30px;
+            font-size: 16px;
+            margin: 10px;
+            cursor: pointer;
+            background: #25D366;
+            color: white;
+            border: none;
+            border-radius: 8px;
+        }
+
+        button:hover {
+            background: #128C7E;
+        }
+
+        #qrcode {
+            margin: 20px 0;
+            border: 4px solid #25D366;
+            padding: 20px;
+            display: inline-block;
+        }
+
+        #logs {
+            background: #f0f0f0;
+            padding: 15px;
+            border-radius: 5px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        .log-item {
+            margin: 5px 0;
+            padding: 5px;
+            border-left: 3px solid #25D366;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>🤖 WhatsApp Bot - Teste Direto da API</h1>
+
+    <div>
+        <label>User ID:</label>
+        <input type="text" id="userId" placeholder="Cole seu user ID aqui" style="width: 400px; padding: 10px;">
+    </div>
+
+    <div>
+        <button onclick="checkHealth()">1. Verificar Backend</button>
+        <button onclick="startBot()">2. Iniciar Bot</button>
+        <button onclick="getQR()">3. Buscar QR Code</button>
+        <button onclick="checkStatus()">4. Ver Status</button>
+    </div>
+
+    <div id="qrcode"></div>
+
+    <h3>📋 Logs:</h3>
+    <div id="logs"></div>
+
+    <script>
+        const API_URL = 'http://localhost:3001';
+
+        function log(message, color = '#000') {
+            const logsDiv = document.getElementById('logs');
+            const logItem = document.createElement('div');
+            logItem.className = 'log-item';
+            logItem.style.borderColor = color;
+            logItem.innerHTML = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logsDiv.insertBefore(logItem, logsDiv.firstChild);
+        }
+
+        async function checkHealth() {
+            try {
+                log('🔍 Verificando backend...', '#0000ff');
+                const response = await fetch(`${API_URL}/health`);
+                const data = await response.json();
+                log(`✅ Backend: ${data.status} - ${data.message}`, '#00ff00');
+                log(`📊 Bots ativos: ${data.activeBots}`, '#00ff00');
+            } catch (error) {
+                log(`❌ Erro: ${error.message}`, '#ff0000');
+            }
+        }
+
+        async function startBot() {
+            const userId = document.getElementById('userId').value;
+            if (!userId) {
+                alert('Digite o User ID primeiro!');
+                return;
+            }
+
+            try {
+                log(`🚀 Iniciando bot para: ${userId}`, '#0000ff');
+                const response = await fetch(`${API_URL}/api/whatsapp/start`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    log(`✅ ${data.message}`, '#00ff00');
+                    log('⏳ Aguarde 5 segundos e clique em "Buscar QR Code"', '#ff9900');
+                } else {
+                    log(`❌ Erro: ${data.error}`, '#ff0000');
+                }
+            } catch (error) {
+                log(`❌ Erro: ${error.message}`, '#ff0000');
+            }
+        }
+
+        async function getQR() {
+            const userId = document.getElementById('userId').value;
+            if (!userId) {
+                alert('Digite o User ID primeiro!');
+                return;
+            }
+
+            try {
+                log(`🔍 Buscando QR Code para: ${userId}`, '#0000ff');
+                const response = await fetch(`${API_URL}/api/whatsapp/qr/${userId}`);
+                const data = await response.json();
+
+                if (data.success && data.qrImage) {
+                    log('✅ QR Code recebido!', '#00ff00');
+                    document.getElementById('qrcode').innerHTML =
+                        `<img src="${data.qrImage}" alt="QR Code" style="width: 300px; height: 300px;">`;
+                } else {
+                    log(`⏳ ${data.message}`, '#ff9900');
+                    log('💡 Tente de novo em alguns segundos...', '#ff9900');
+                }
+            } catch (error) {
+                log(`❌ Erro: ${error.message}`, '#ff0000');
+            }
+        }
+
+        async function checkStatus() {
+            const userId = document.getElementById('userId').value;
+            if (!userId) {
+                alert('Digite o User ID primeiro!');
+                return;
+            }
+
+            try {
+                log(`🔍 Verificando status...`, '#0000ff');
+                const response = await fetch(`${API_URL}/api/whatsapp/status/${userId}`);
+                const data = await response.json();
+
+                log(`📊 Running: ${data.running}`, '#0000ff');
+                log(`📊 Connected: ${data.connected}`, '#0000ff');
+                log(`📊 Has QR: ${data.hasQR}`, '#0000ff');
+            } catch (error) {
+                log(`❌ Erro: ${error.message}`, '#ff0000');
+            }
+        }
+
+        // Auto-carregar health check
+        window.onload = () => {
+            checkHealth();
+            log('👋 Pronto para testar!', '#00ff00');
+            log('💡 Cole seu User ID no campo acima', '#ff9900');
+        };
+    </script>
+</body>
+
+</html>

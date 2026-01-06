@@ -3,6 +3,7 @@ import { useAuth } from './AuthContext';
 import { useApp } from './AppContext';
 import { supabase } from '../utils/supabaseClient';
 import NewOrderModal from '../components/NewOrderModal';
+import { WhatsAppService } from '../services/whatsapp';
 
 interface OrderItem {
     product_id: string;
@@ -372,6 +373,36 @@ export const OrderNotificationProvider: React.FC<{ children: React.ReactNode }> 
             }
 
             console.log('✅ Order accepted successfully');
+
+            // 🆕 ENVIAR NOTIFICAÇÃO WHATSAPP "PEDIDO CONFIRMADO"
+            try {
+                if (order && order.customer_id && order.customer_id !== 'guest') {
+                    // Buscar dados do cliente do contexto App
+                    const { data: customerData } = await supabase
+                        .from('customers')
+                        .select('*')
+                        .eq('id', order.customer_id)
+                        .single();
+
+                    if (customerData && customerData.phone) {
+                        console.log('📱 Enviando WhatsApp "Pedido Confirmado" para:', customerData.name);
+
+                        // Converter order para formato correto
+                        const orderForWhatsApp = {
+                            id: order.id,
+                            customerId: order.customer_id,
+                            totalAmount: order.total_amount,
+                            deliveryType: order.delivery_type || 'delivery',
+                            items: order.items || []
+                        };
+
+                        await WhatsAppService.notifyOrderConfirmed(orderForWhatsApp as any, customerData);
+                    }
+                }
+            } catch (whatsappError) {
+                console.error('❌ Erro ao enviar WhatsApp (não crítico):', whatsappError);
+            }
+
             await refreshOrders();
             dismissNotification();
         } catch (error) {

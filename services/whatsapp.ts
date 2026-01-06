@@ -266,14 +266,21 @@ export const WhatsAppService = {
         customer: Customer
     ): Promise<boolean> {
         try {
+            console.log('🔍 DEBUG notifyOrderConfirmed - Order:', order.id, 'Customer:', customer.name);
+
             const config = await this.getConfig();
 
+            console.log('🔍 DEBUG - Config:', config);
+            console.log('🔍 DEBUG - is_enabled:', config?.is_enabled);
+            console.log('🔍 DEBUG - auto_send_order_confirmed:', config?.auto_send_order_confirmed);
+
             if (!config || !config.is_enabled || !config.auto_send_order_confirmed) {
+                console.log('⚠️ Não enviando confirmed - Config desabilitado');
                 return false;
             }
 
             if (!customer.phone) {
-                console.warn('Cliente sem telefone cadastrado');
+                console.warn('❌ Cliente sem telefone cadastrado');
                 return false;
             }
 
@@ -282,25 +289,22 @@ export const WhatsAppService = {
 
             const result = await this.sendTemplateMessage({
                 recipientPhone: customer.phone,
-                templateName: 'order_confirmed', // ⚠️ Usando template antigo (sem _v2)
+                templateName: 'order_confirmed',
                 parameters: [
-                    customer.name || 'Cliente', // {{1}}
-                    order.id.substring(0, 8).toUpperCase(), // {{2}}
-                    order.items.length.toString(), // {{3}} Quantidade de itens
-                    order.totalAmount.toFixed(2), // {{4}} Valor total
-                    order.deliveryType === 'delivery' ? 'Entrega' : 'Retirada', // {{5}} Tipo
-                    estimatedTime, // {{6}} Tempo estimado
-                    `https://app.foodcostpro.com/track/${order.id}`, // {{7}} Link
-                    'FoodCostPro' // {{8}} Nome do restaurante
+                    order.id.substring(0, 8).toUpperCase(), // {{1}} Pedido numero
+                    order.totalAmount.toFixed(2), // {{2}} Total
+                    estimatedTime // {{3}} Previsao
                 ],
                 notificationType: 'order_confirmed',
                 orderId: order.id,
                 customerId: customer.id
             });
 
+            console.log('✅ Resultado do envio confirmed:', result);
+
             return result.success;
         } catch (error) {
-            console.error('Erro ao notificar pedido confirmado:', error);
+            console.error('❌ ERRO ao notificar pedido confirmado:', error);
             return false;
         }
     },
@@ -328,24 +332,36 @@ export const WhatsAppService = {
             const statusMap: Record<string, { type: WhatsAppNotificationType; template: string; autoSend: boolean }> = {
                 'preparing': {
                     type: 'order_preparing',
-                    template: 'order_preparing', // ⚠️ Usando template antigo
+                    template: 'order_preparing',
                     autoSend: config.auto_send_order_preparing
                 },
                 'ready': {
                     type: 'order_ready',
-                    template: 'order_ready', // ✅ Já está correto
+                    template: 'order_ready_util', // ✅ UTILITY - Sem restrições!
                     autoSend: config.auto_send_order_ready
                 },
                 'delivered': {
                     type: 'order_delivered',
-                    template: 'order_delivered', // ⚠️ Usando template antigo
+                    template: 'order_delivered_util', // ✅ UTILITY - Sem restrições!
+                    autoSend: config.auto_send_order_delivered
+                },
+                'completed': { // ✅ Status real do sistema
+                    type: 'order_delivered',
+                    template: 'order_delivered_util', // ✅ UTILITY - Sem restrições!
                     autoSend: config.auto_send_order_delivered
                 }
             };
 
+            console.log('🔍 DEBUG notifyOrderStatusChange - Status:', newStatus);
+            console.log('🔍 DEBUG - StatusMap:', statusMap);
+
             const statusInfo = statusMap[newStatus];
 
+            console.log('🔍 DEBUG - StatusInfo:', statusInfo);
+            console.log('🔍 DEBUG - AutoSend?', statusInfo?.autoSend);
+
             if (!statusInfo || !statusInfo.autoSend) {
+                console.log('⚠️ Não enviando WhatsApp - Status não mapeado ou autoSend desativado');
                 return false;
             }
 
@@ -354,19 +370,22 @@ export const WhatsAppService = {
 
             // Adicionar parâmetros específicos por status
             if (newStatus === 'preparing') {
-                // Template v2: pedido# + tempo
+                // Template: pedido# + tempo
                 parameters.push('20'); // {{2}} tempo estimado em minutos
             } else if (newStatus === 'ready') {
                 // Template: pedido# + código
                 parameters.push('RET-' + order.id.substring(0, 4).toUpperCase()); // {{2}} Código de retirada
-            } else if (newStatus === 'delivered') {
-                // Template antigo: pedido# + link + pontos ganhos + total pontos
+            } else if (newStatus === 'delivered' || newStatus === 'completed') {
+                // Template: pedido# + pontos ganhos + total pontos (3 parâmetros)
                 parameters.push(
-                    `https://app.foodcostpro.com/review/${order.id}`, // {{2}} Link avaliação
-                    Math.floor(order.totalAmount).toString(), // {{3}} Pontos ganhos
-                    '1350' // {{4}} Total de pontos (idealmente buscar do customer)
+                    Math.floor(order.totalAmount).toString(), // {{2}} Pontos ganhos
+                    '1350' // {{3}} Total de pontos (idealmente buscar do customer)
                 );
             }
+
+
+            console.log('📱 ENVIANDO WHATSAPP:', statusInfo.template, 'para', customer.phone);
+            console.log('📋 Parâmetros:', parameters);
 
             const result = await this.sendTemplateMessage({
                 recipientPhone: customer.phone,
@@ -377,9 +396,11 @@ export const WhatsAppService = {
                 customerId: customer.id
             });
 
+            console.log('✅ Resultado do envio:', result);
+
             return result.success;
         } catch (error) {
-            console.error('Erro ao notificar mudança de status:', error);
+            console.error('❌ ERRO ao notificar mudança de status:', error);
             return false;
         }
     },
@@ -538,3 +559,5 @@ export const WhatsAppService = {
         }
     }
 };
+
+export default WhatsAppService;
