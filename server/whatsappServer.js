@@ -94,7 +94,6 @@ app.post('/api/whatsapp/start', async (req, res) => {
             auth: state,
             printQRInTerminal: false,
             browser: Browsers.macOS('Safari'), // Simular Safari do Mac
-            logger: P({ level: 'silent' }), // Desabilitar logs detalhados
             connectTimeoutMs: 60000, // 60s timeout
             defaultQueryTimeoutMs: undefined,
             keepAliveIntervalMs: 30000, // Keep alive a cada 30s
