@@ -28,6 +28,8 @@ const PDV: React.FC = () => {
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [showCashRegisterModal, setShowCashRegisterModal] = useState(false);
     const [showConferenceModal, setShowConferenceModal] = useState(false);
+    const [showAutocomplete, setShowAutocomplete] = useState(false);
+    const [selectedIndex, setSelectedIndex] = useState(0);
 
     // Novo estado para sucesso/impressão
     const [lastOrder, setLastOrder] = useState<Order | null>(null);
@@ -48,6 +50,20 @@ const PDV: React.FC = () => {
     useEffect(() => {
         loadCurrentCashRegister();
     }, [user]);
+
+    // Atalho de teclado F2 para busca
+    useEffect(() => {
+        const handleKeyPress = (e: KeyboardEvent) => {
+            //F2 - Focar busca
+            if (e.key === 'F2') {
+                e.preventDefault();
+                document.getElementById('search-input')?.focus();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyPress);
+        return () => window.removeEventListener('keydown', handleKeyPress);
+    }, []);
 
     const loadCurrentCashRegister = async () => {
         if (!user?.id) return;
@@ -420,12 +436,68 @@ const PDV: React.FC = () => {
                             <div className="relative mb-4">
                                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                                 <input
+                                    id="search-input"
                                     type="text"
-                                    placeholder="Buscar produtos... (F2)"
+                                    placeholder="Buscar produtos... (Aperte F2)"
                                     value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-12 pr-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all"
+                                    onChange={(e) => {
+                                        setSearchTerm(e.target.value);
+                                        setShowAutocomplete(e.target.value.length > 0);
+                                    }}
+                                    onFocus={() => {
+                                        if (searchTerm.length > 0) setShowAutocomplete(true);
+                                    }}
+                                    onBlur={() => {
+                                        // Delay para permitir click no autocomplete
+                                        setTimeout(() => setShowAutocomplete(false), 200);
+                                    }}
+                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-12 pr-4 py-4 text-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all"
                                 />
+
+                                {/* Autocomplete Dropdown */}
+                                {showAutocomplete && filteredProducts.length > 0 && searchTerm.length > 0 && (
+                                    <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-2xl z-50 max-h-80 overflow-y-auto">
+                                        {filteredProducts.slice(0, 8).map((product, index) => (
+                                            <button
+                                                key={product.id}
+                                                onClick={() => {
+                                                    addToCart(product);
+                                                    setSearchTerm('');
+                                                    setShowAutocomplete(false);
+                                                }}
+                                                className={`w-full p-4 flex items-center justify-between hover:bg-orange-50 transition-colors border-b border-gray-100 last:border-0 ${index === selectedIndex ? 'bg-orange-50' : ''
+                                                    }`}
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-12 h-12 bg-gradient-to-br from-orange-100 to-red-100 rounded-lg flex items-center justify-center overflow-hidden">
+                                                        {product.image_url ? (
+                                                            <img
+                                                                src={product.image_url}
+                                                                alt={product.name}
+                                                                className="w-full h-full object-cover"
+                                                                onError={(e) => {
+                                                                    e.currentTarget.style.display = 'none';
+                                                                    e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                                                                }}
+                                                            />
+                                                        ) : null}
+                                                        <Package className={`w-6 h-6 text-orange-600 ${product.image_url ? 'hidden' : ''}`} />
+                                                    </div>
+                                                    <div className="text-left">
+                                                        <p className="font-semibold text-gray-900">{product.name}</p>
+                                                        <p className="text-sm text-gray-500">{product.category}</p>
+                                                    </div>
+                                                </div>
+                                                <p className="text-lg font-bold text-green-600">R$ {product.currentPrice.toFixed(2)}</p>
+                                            </button>
+                                        ))}
+                                        {filteredProducts.length > 8 && (
+                                            <div className="p-3 text-center text-sm text-gray-500 bg-gray-50">
+                                                +{filteredProducts.length - 8} produtos...
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
 
                             <div className="flex gap-2 overflow-x-auto pb-2">
@@ -433,7 +505,7 @@ const PDV: React.FC = () => {
                                     <button
                                         key={cat}
                                         onClick={() => setSelectedCategory(cat)}
-                                        className={`px-4 py-2 rounded-xl font-medium whitespace-nowrap transition-all ${selectedCategory === cat
+                                        className={`px-6 py-3 rounded-xl font-semibold whitespace-nowrap transition-all ${selectedCategory === cat
                                             ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg'
                                             : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                                             }`}
@@ -444,24 +516,37 @@ const PDV: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Grid de Produtos */}
-                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                        {/* Grid de Produtos - CARDS MAIORES */}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                             {filteredProducts.map(product => (
                                 <button
                                     key={product.id}
                                     onClick={() => addToCart(product)}
-                                    className="bg-white rounded-2xl p-4 border border-gray-100 hover:border-orange-300 hover:shadow-xl transition-all duration-300 text-left group"
+                                    className="bg-white rounded-2xl p-6 border-2 border-gray-100 hover:border-orange-400 hover:shadow-2xl transition-all duration-300 text-left group"
                                 >
-                                    <div className="aspect-square bg-gradient-to-br from-orange-50 to-red-50 rounded-xl mb-3 flex items-center justify-center group-hover:scale-105 transition-transform">
-                                        <Package className="w-12 h-12 text-orange-400" />
+                                    <div className="aspect-square bg-gradient-to-br from-orange-50 to-red-50 rounded-2xl mb-4 flex items-center justify-center group-hover:scale-105 transition-transform overflow-hidden">
+                                        {product.image_url ? (
+                                            <img
+                                                src={product.image_url}
+                                                alt={product.name}
+                                                className="w-full h-full object-cover"
+                                                onError={(e) => {
+                                                    e.currentTarget.style.display = 'none';
+                                                    e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                                                }}
+                                            />
+                                        ) : null}
+                                        <Package className={`w-16 h-16 text-orange-400 ${product.image_url ? 'hidden' : ''}`} />
                                     </div>
-                                    <h3 className="text-gray-900 font-semibold mb-1 truncate">{product.name}</h3>
-                                    <p className="text-gray-500 text-sm mb-2">{product.category}</p>
+                                    <h3 className="text-gray-900 font-bold text-lg mb-2 line-clamp-2">{product.name}</h3>
+                                    <p className="text-gray-500 text-sm mb-3">{product.category}</p>
                                     <div className="flex items-center justify-between">
-                                        <p className="text-2xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+                                        <p className="text-3xl font-black bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
                                             R$ {product.currentPrice.toFixed(2)}
                                         </p>
-                                        <Plus className="w-5 h-5 text-orange-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                        <div className="p-2 bg-orange-100 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <Plus className="w-6 h-6 text-orange-600" />
+                                        </div>
                                     </div>
                                 </button>
                             ))}

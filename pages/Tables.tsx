@@ -99,9 +99,14 @@ const TableCard = ({ table, onDelete, onClick }: { table: any, onDelete: (id: st
                             OCUPADA
                         </div>
                         {associatedOrder && (
-                            <span className="text-[10px] text-gray-400 font-medium flex items-center gap-1">
-                                <User size={10} /> {associatedOrder.customerName === 'Cliente Balcão' ? 'Visitante' : associatedOrder.customerName.split(' ')[0]}
-                            </span>
+                            <>
+                                <span className="text-[10px] text-gray-400 font-medium flex items-center gap-1">
+                                    <User size={10} /> {associatedOrder.customerName === 'Cliente Balcão' ? 'Visitante' : associatedOrder.customerName.split(' ')[0]}
+                                </span>
+                                <span className="text-[10px] text-gray-600 font-bold bg-gray-100 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                    <Utensils size={10} /> {associatedOrder.items?.length || 0} itens
+                                </span>
+                            </>
                         )}
                     </div>
                 ) : (
@@ -145,9 +150,15 @@ const TableCard = ({ table, onDelete, onClick }: { table: any, onDelete: (id: st
 
             {/* Footer Action Strip */}
             {isOccupied && (
-                <div className="bg-orange-600 text-white p-3 flex items-center justify-center gap-2 text-sm font-bold opacity-0 group-hover:opacity-100 transition-all translate-y-full group-hover:translate-y-0 absolute bottom-0 left-0 right-0">
-                    <span>Ver Comanda</span>
-                    <ArrowRight size={16} />
+                <div className="bg-gradient-to-r from-orange-600 to-red-600 text-white p-3.5 flex items-center justify-between text-sm font-bold opacity-0 group-hover:opacity-100 transition-all translate-y-full group-hover:translate-y-0 absolute bottom-0 left-0 right-0">
+                    <div className="flex items-center gap-2">
+                        <Utensils size={16} />
+                        <span>Ver Comanda</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 bg-white/20 backdrop-blur-sm px-2.5 py-1 rounded-full text-xs">
+                        <DollarSign size={12} />
+                        <span>Dividir</span>
+                    </div>
                 </div>
             )}
 

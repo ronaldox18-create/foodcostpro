@@ -3,7 +3,7 @@ import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, ShoppingBasket, ChefHat, Settings, Menu, Landmark, Users, ClipboardList, Boxes, Sparkles, LogOut, User as UserIcon, LayoutGrid, Smartphone, Tag, PackageCheck, Clock, Crown, CreditCard, History, MessageCircle } from 'lucide-react';
+import { LayoutDashboard, ShoppingBasket, ChefHat, Settings, Menu, Landmark, Users, ClipboardList, Boxes, Sparkles, LogOut, User as UserIcon, LayoutGrid, Smartphone, Tag, PackageCheck, Clock, Crown, CreditCard, History, MessageCircle, FileBarChart } from 'lucide-react';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -65,6 +65,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           <NavItem to="/tables" icon={LayoutGrid} label="Gestão de Mesas" active={location.pathname === '/tables'} />
           <NavItem to="/dashboard" icon={LayoutDashboard} label="Dashboard" active={location.pathname === '/dashboard'} />
           <NavItem to="/all-orders" icon={ClipboardList} label="Todos os Pedidos" active={location.pathname === '/all-orders'} />
+          <NavItem to="/reports" icon={FileBarChart} label="Relatórios" active={location.pathname === '/reports'} />
           <NavItem to="/customers" icon={Users} label="Clientes (CRM)" active={location.pathname === '/customers'} />
 
           <div className="pt-6 pb-2 px-2">

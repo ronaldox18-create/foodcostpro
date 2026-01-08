@@ -27,7 +27,7 @@ const WhatsAppBotSetup: React.FC = () => {
 
     const checkBackend = async () => {
         try {
-            const response = await fetch('http://localhost:3001/health');
+            const response = await fetch('https://foodcostpro-production.up.railway.app/health');
             const data = await response.json();
             setBackendOnline(data.status === 'ok');
             console.log('✅ Backend status:', data);
@@ -90,7 +90,7 @@ const WhatsAppBotSetup: React.FC = () => {
             if (error) throw error;
 
             console.log('🚀 Chamando API para iniciar bot...');
-            const response = await fetch('http://localhost:3001/api/whatsapp/start', {
+            const response = await fetch('https://foodcostpro-production.up.railway.app/api/whatsapp/start', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ userId: user.id })
@@ -122,7 +122,7 @@ const WhatsAppBotSetup: React.FC = () => {
         console.log('🔍 [' + new Date().toLocaleTimeString() + '] Buscando QR Code...');
 
         try {
-            const response = await fetch(`http://localhost:3001/api/whatsapp/qr/${user.id}`);
+            const response = await fetch(`https://foodcostpro-production.up.railway.app/api/whatsapp/qr/${user.id}`);
             const data = await response.json();
 
             console.log('📥 Resposta:', data);

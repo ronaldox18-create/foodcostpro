@@ -12,6 +12,7 @@ import {
 import { formatCurrency } from '../utils/calculations';
 import POSPaymentModal from '../components/POSPaymentModal';
 import BillConferenceModal from '../components/BillConferenceModal';
+import SplitBillModal from '../components/SplitBillModal';
 
 const TableService: React.FC = () => {
     const { products, orders, tables, addOrder, updateOrder, checkStockAvailability, handleStockUpdate } = useApp();
@@ -34,6 +35,7 @@ const TableService: React.FC = () => {
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [showConferenceModal, setShowConferenceModal] = useState(false);
+    const [showSplitBillModal, setShowSplitBillModal] = useState(false);
     const [isSending, setIsSending] = useState(false);
     const [lastKitchenOrderItems, setLastKitchenOrderItems] = useState<OrderItem[]>([]);
 
@@ -415,6 +417,15 @@ const TableService: React.FC = () => {
                         Imprimir Conferência
                     </button>
 
+                    <button
+                        onClick={() => setShowSplitBillModal(true)}
+                        disabled={cart.length === 0}
+                        className="w-full py-3 bg-blue-100 text-blue-700 font-bold rounded-xl hover:bg-blue-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed mb-3"
+                    >
+                        <DollarSign size={20} />
+                        Dividir Conta
+                    </button>
+
                     <div className="grid grid-cols-2 gap-3">
                         <button
                             onClick={handleSendToKitchen}
@@ -474,6 +485,15 @@ const TableService: React.FC = () => {
                     onClose={() => setShowConferenceModal(false)}
                     cart={cart}
                     tableNumber={currentTable?.number}
+                />
+            )}
+
+            {showSplitBillModal && (
+                <SplitBillModal
+                    isOpen={showSplitBillModal}
+                    onClose={() => setShowSplitBillModal(false)}
+                    total={cartTotal}
+                    items={cart}
                 />
             )}
 
