@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { X, Save, Rocket, DollarSign } from 'lucide-react';
+import { X, Save, Rocket, DollarSign, Sparkles, Loader } from 'lucide-react';
+import { askAI } from '../utils/aiHelper';
 
 interface Investment {
     id: string;
@@ -34,8 +35,68 @@ const InvestmentModal: React.FC<InvestmentModalProps> = ({ isOpen, onClose, onSa
             notes: ''
         }
     );
+    const [isAiLoading, setIsAiLoading] = useState(false);
 
     if (!isOpen) return null;
+
+    const handleAiSuggest = async () => {
+        if (!formData.category) {
+            alert('Selecione a categoria primeiro!');
+            return;
+        }
+
+        setIsAiLoading(true);
+
+        const categoryLabels: any = {
+            equipment: 'Equipamentos',
+            renovation: 'Reforma',
+            marketing: 'Marketing',
+            technology: 'Tecnologia',
+            expansion: 'Expansão',
+            other: 'Outros'
+        };
+
+        const prompt = `Atue como consultor de investimentos especializado em restaurantes.
+
+CONTEXTO:
+Investimento em: ${categoryLabels[formData.category]}
+
+TAREFA:
+Sugira um investimento viável com ROI realista.
+
+RETORNE JSON puro:
+{
+  "suggestedName": "nome",
+  "amount": valor,
+  "expectedROI": roi,
+  "completionDate": "YYYY-MM-DD",
+  "notes": "justificativa",
+  "reasoning": "explicação"
+}`;
+
+        try {
+            const result = await askAI(prompt);
+            const cleanJson = result.replace(/```json/g, '').replace(/```/g, '').trim();
+            const suggestion = JSON.parse(cleanJson);
+
+            setFormData({
+                ...formData,
+                name: suggestion.suggestedName || formData.name,
+                amount: suggestion.amount || 0,
+                expectedROI: suggestion.expectedROI || 0,
+                completionDate: suggestion.completionDate || formData.completionDate,
+                notes: suggestion.notes || formData.notes
+            });
+
+            if (suggestion.reasoning) {
+                alert(`💡 IA: ${suggestion.reasoning}`);
+            }
+        } catch (e) {
+            alert('Erro. Tente novamente.');
+        } finally {
+            setIsAiLoading(false);
+        }
+    };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -55,244 +116,151 @@ const InvestmentModal: React.FC<InvestmentModalProps> = ({ isOpen, onClose, onSa
 
         onSave(investment);
         onClose();
-
-        // Reset form
-        setFormData({
-            name: '',
-            category: 'equipment',
-            amount: 0,
-            expectedROI: 0,
-            status: 'planned',
-            startDate: '',
-            completionDate: '',
-            notes: ''
-        });
     };
 
     const categories = [
-        { value: 'equipment', label: 'Equipamentos', icon: '🔧', color: 'orange' },
-        { value: 'renovation', label: 'Reforma', icon: '🏗️', color: 'purple' },
-        { value: 'marketing', label: 'Marketing', icon: '📣', color: 'pink' },
-        { value: 'technology', label: 'Tecnologia', icon: '💻', color: 'blue' },
-        { value: 'expansion', label: 'Expansão', icon: '🚀', color: 'green' },
-        { value: 'other', label: 'Outros', icon: '📦', color: 'gray' }
+        { value: 'equipment', label: 'Equipamentos', icon: '🔧' },
+        { value: 'renovation', label: 'Reforma', icon: '🏗️' },
+        { value: 'marketing', label: 'Marketing', icon: '📣' },
+        { value: 'technology', label: 'Tecnologia', icon: '💻' },
+        { value: 'expansion', label: 'Expansão', icon: '🚀' },
+        { value: 'other', label: 'Outros', icon: '📦' }
     ];
 
     const statuses = [
-        { value: 'planned', label: 'Planejado', color: 'gray' },
-        { value: 'approved', label: 'Aprovado', color: 'blue' },
-        { value: 'in_progress', label: 'Em Andamento', color: 'yellow' },
-        { value: 'completed', label: 'Concluído', color: 'green' },
-        { value: 'cancelled', label: 'Cancelado', color: 'red' }
+        { value: 'planned', label: 'Planejado' },
+        { value: 'approved', label: 'Aprovado' },
+        { value: 'in_progress', label: 'Em Andamento' },
+        { value: 'completed', label: 'Concluído' },
+        { value: 'cancelled', label: 'Cancelado' }
     ];
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl animate-scale-in max-h-[90vh] overflow-y-auto">
-                <div className="p-6 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-purple-100 rounded-lg">
-                            <Rocket className="text-purple-600" size={24} />
-                        </div>
-                        <div>
-                            <h3 className="text-2xl font-bold text-gray-900">
-                                {editingInvestment ? 'Editar Investimento' : '🚀 Novo Investimento'}
-                            </h3>
-                            <p className="text-xs text-gray-500">Planeje e acompanhe seus investimentos</p>
-                        </div>
-                    </div>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition">
-                        <X size={24} />
-                    </button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+                <div className="p-6 border-b flex items-center justify-between sticky top-0 bg-white z-10">
+                    <h3 className="text-2xl font-bold">🚀 {editingInvestment ? 'Editar' : 'Novo'} Investimento</h3>
+                    <button onClick={onClose}><X size={24} /></button>
                 </div>
 
                 <form onSubmit={handleSubmit} className="p-6 space-y-6">
-                    {/* Nome do Projeto */}
                     <div>
-                        <label className="block font-bold text-sm text-gray-700 mb-2">Nome do Projeto</label>
+                        <label className="block font-bold text-sm mb-2">Nome</label>
                         <input
                             type="text"
                             required
                             value={formData.name}
                             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                            className="w-full p-3 border-2 border-gray-200 rounded-xl focus:border-purple-500 outline-none transition"
-                            placeholder="Ex: Compra de novo forno industrial"
+                            className="w-full p-3 border-2 rounded-xl focus:border-purple-500 outline-none"
                         />
                     </div>
 
-                    {/* Categoria */}
                     <div>
-                        <label className="block font-bold text-sm text-gray-700 mb-3">Categoria</label>
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        <label className="block font-bold text-sm mb-3">Categoria</label>
+                        <div className="grid grid-cols-3 gap-3">
                             {categories.map(cat => (
                                 <button
                                     key={cat.value}
                                     type="button"
                                     onClick={() => setFormData({ ...formData, category: cat.value as any })}
-                                    className={`p-4 rounded-xl border-2 transition-all text-center ${formData.category === cat.value
-                                            ? 'border-purple-500 bg-purple-50 shadow-md'
-                                            : 'border-gray-200 hover:border-gray-300'
+                                    className={`p-4 rounded-xl border-2 ${formData.category === cat.value ? 'border-purple-500 bg-purple-50' : 'border-gray-200'
                                         }`}
                                 >
                                     <div className="text-3xl mb-1">{cat.icon}</div>
-                                    <div className="font-bold text-xs text-gray-700">{cat.label}</div>
+                                    <div className="font-bold text-xs">{cat.label}</div>
                                 </button>
                             ))}
                         </div>
                     </div>
 
-                    {/* Valor e ROI */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block font-bold text-sm text-gray-700 mb-2">
-                                Valor do Investimento (R$)
-                            </label>
-                            <div className="relative">
-                                <DollarSign className="absolute left-3 top-3.5 text-gray-400" size={18} />
-                                <input
-                                    type="number"
-                                    required
-                                    step="0.01"
-                                    value={formData.amount}
-                                    onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) })}
-                                    className="w-full pl-10 p-3 border-2 border-gray-200 rounded-xl focus:border-purple-500 outline-none transition"
-                                    placeholder="0.00"
-                                />
-                            </div>
-                        </div>
+                    <button
+                        type="button"
+                        onClick={handleAiSuggest}
+                        disabled={isAiLoading}
+                        className="w-full p-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold rounded-xl flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                        {isAiLoading ? <Loader size={20} className="animate-spin" /> : <Sparkles size={20} />}
+                        🤖 {isAiLoading ? 'Analisando...' : 'Analisar com IA'}
+                    </button>
 
+                    <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block font-bold text-sm text-gray-700 mb-2">
-                                ROI Esperado (%)
-                            </label>
+                            <label className="block font-bold text-sm mb-2">Valor (R$)</label>
                             <input
                                 type="number"
                                 required
-                                step="0.1"
+                                value={formData.amount}
+                                onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) })}
+                                className="w-full p-3 border-2 rounded-xl outline-none"
+                            />
+                        </div>
+                        <div>
+                            <label className="block font-bold text-sm mb-2">ROI (%)</label>
+                            <input
+                                type="number"
+                                required
                                 value={formData.expectedROI}
                                 onChange={(e) => setFormData({ ...formData, expectedROI: parseFloat(e.target.value) })}
-                                className="w-full p-3 border-2 border-gray-200 rounded-xl focus:border-purple-500 outline-none transition"
-                                placeholder="0.0"
+                                className="w-full p-3 border-2 rounded-xl outline-none"
                             />
-                            <p className="text-xs text-gray-500 mt-1">
-                                Retorno esperado sobre o investimento
-                            </p>
                         </div>
                     </div>
 
-                    {/* Status */}
                     <div>
-                        <label className="block font-bold text-sm text-gray-700 mb-3">Status</label>
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-                            {statuses.map(status => (
+                        <label className="block font-bold text-sm mb-3">Status</label>
+                        <div className="grid grid-cols-5 gap-2">
+                            {statuses.map(s => (
                                 <button
-                                    key={status.value}
+                                    key={s.value}
                                     type="button"
-                                    onClick={() => setFormData({ ...formData, status: status.value as any })}
-                                    className={`p-3 rounded-lg border-2 transition-all text-center text-xs font-bold ${formData.status === status.value
-                                            ? `border-${status.color}-500 bg-${status.color}-50`
-                                            : 'border-gray-200 hover:border-gray-300'
+                                    onClick={() => setFormData({ ...formData, status: s.value as any })}
+                                    className={`p-2 rounded border text-xs font-bold ${formData.status === s.value ? 'border-purple-500 bg-purple-50' : 'border-gray-200'
                                         }`}
                                 >
-                                    {status.label}
+                                    {s.label}
                                 </button>
                             ))}
                         </div>
                     </div>
 
-                    {/* Datas */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block font-bold text-sm text-gray-700 mb-2">
-                                Data de Início
-                            </label>
+                            <label className="block font-bold text-sm mb-2">Início</label>
                             <input
                                 type="date"
                                 value={formData.startDate}
                                 onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                                className="w-full p-3 border-2 border-gray-200 rounded-xl focus:border-purple-500 outline-none transition"
+                                className="w-full p-3 border-2 rounded-xl outline-none"
                             />
                         </div>
-
                         <div>
-                            <label className="block font-bold text-sm text-gray-700 mb-2">
-                                Conclusão Prevista
-                            </label>
+                            <label className="block font-bold text-sm mb-2">Conclusão</label>
                             <input
                                 type="date"
                                 value={formData.completionDate}
                                 onChange={(e) => setFormData({ ...formData, completionDate: e.target.value })}
-                                className="w-full p-3 border-2 border-gray-200 rounded-xl focus:border-purple-500 outline-none transition"
+                                className="w-full p-3 border-2 rounded-xl outline-none"
                             />
                         </div>
                     </div>
 
-                    {/* ROI Atual (se em andamento ou concluído) */}
-                    {(formData.status === 'in_progress' || formData.status === 'completed') && (
-                        <div>
-                            <label className="block font-bold text-sm text-gray-700 mb-2">
-                                ROI Atual (%)
-                            </label>
-                            <input
-                                type="number"
-                                step="0.1"
-                                value={formData.actualROI || ''}
-                                onChange={(e) => setFormData({ ...formData, actualROI: parseFloat(e.target.value) || undefined })}
-                                className="w-full p-3 border-2 border-gray-200 rounded-xl focus:border-purple-500 outline-none transition"
-                                placeholder="0.0"
-                            />
-                        </div>
-                    )}
-
-                    {/* Observações */}
                     <div>
-                        <label className="block font-bold text-sm text-gray-700 mb-2">
-                            Observações
-                        </label>
+                        <label className="block font-bold text-sm mb-2">Observações</label>
                         <textarea
                             value={formData.notes}
                             onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                            className="w-full p-3 border-2 border-gray-200 rounded-xl focus:border-purple-500 outline-none transition resize-none"
+                            className="w-full p-3 border-2 rounded-xl outline-none"
                             rows={3}
-                            placeholder="Detalhes sobre o investimento..."
                         />
                     </div>
 
-                    {/* Preview do ROI */}
-                    {formData.amount > 0 && formData.expectedROI > 0 && (
-                        <div className="p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border border-purple-200">
-                            <div className="grid grid-cols-2 gap-4 text-center">
-                                <div>
-                                    <p className="text-xs text-gray-600 mb-1">Retorno Esperado</p>
-                                    <p className="text-2xl font-black text-purple-600">
-                                        R$ {((formData.amount * formData.expectedROI) / 100).toFixed(2)}
-                                    </p>
-                                </div>
-                                <div>
-                                    <p className="text-xs text-gray-600 mb-1">Total Final</p>
-                                    <p className="text-2xl font-black text-green-600">
-                                        R$ {(formData.amount + (formData.amount * formData.expectedROI) / 100).toFixed(2)}
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Botões */}
-                    <div className="flex gap-3 pt-4">
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-xl font-bold hover:bg-gray-50 transition"
-                        >
+                    <div className="flex gap-3">
+                        <button type="button" onClick={onClose} className="flex-1 p-3 border-2 rounded-xl font-bold">
                             Cancelar
                         </button>
-                        <button
-                            type="submit"
-                            className="flex-1 px-6 py-3 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-700 transition flex items-center justify-center gap-2"
-                        >
+                        <button type="submit" className="flex-1 p-3 bg-purple-600 text-white rounded-xl font-bold flex items-center justify-center gap-2">
                             <Save size={20} />
-                            {editingInvestment ? 'Atualizar' : 'Criar Investimento'}
+                            {editingInvestment ? 'Atualizar' : 'Criar'}
                         </button>
                     </div>
                 </form>
