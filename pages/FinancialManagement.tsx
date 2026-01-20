@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
 import {
     DollarSign,
@@ -26,6 +26,31 @@ import {
 import { formatCurrency, formatPercent } from '../utils/calculations';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid, Line, LineChart } from 'recharts';
 import DistributionModal from '../components/DistributionModal';
+import GoalModal from '../components/GoalModal';
+import InvestmentModal from '../components/InvestmentModal';
+
+interface Goal {
+    id: string;
+    name: string;
+    type: 'revenue' | 'profit' | 'margin' | 'ticket' | 'customers';
+    targetValue: number;
+    currentValue: number;
+    period: 'monthly' | 'quarterly' | 'yearly';
+    deadline?: string;
+}
+
+interface Investment {
+    id: string;
+    name: string;
+    category: 'equipment' | 'renovation' | 'marketing' | 'technology' | 'expansion' | 'other';
+    amount: number;
+    expectedROI: number;
+    actualROI?: number;
+    status: 'planned' | 'approved' | 'in_progress' | 'completed' | 'cancelled';
+    startDate?: string;
+    completionDate?: string;
+    notes?: string;
+}
 
 const FinancialManagement: React.FC = () => {
     const { orders, fixedCosts, products, ingredients, settings } = useApp();
@@ -34,15 +59,77 @@ const FinancialManagement: React.FC = () => {
     const [showDistributionModal, setShowDistributionModal] = useState(false);
     const [showGoalModal, setShowGoalModal] = useState(false);
     const [showInvestmentModal, setShowInvestmentModal] = useState(false);
+    const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
+    const [editingInvestment, setEditingInvestment] = useState<Investment | null>(null);
 
-    // Estado para configuração de distribuição
-    const [distribution, setDistribution] = useState({
-        prolabore: 45,
-        emergency: 25,
-        investment: 15,
-        improvement: 10,
-        profit: 5
+    // Estado para configuração de distribuição (com localStorage)
+    const [distribution, setDistribution] = useState(() => {
+        const saved = localStorage.getItem('financialDistribution');
+        return saved ? JSON.parse(saved) : {
+            prolabore: 45,
+            emergency: 25,
+            investment: 15,
+            improvement: 10,
+            profit: 5
+        };
     });
+
+    // Estados para metas e investimentos (com localStorage)
+    const [goals, setGoals] = useState<Goal[]>(() => {
+        const saved = localStorage.getItem('financialGoals');
+        return saved ? JSON.parse(saved) : [];
+    });
+
+    const [investments, setInvestments] = useState<Investment[]>(() => {
+        const saved = localStorage.getItem('financialInvestments');
+        return saved ? JSON.parse(saved) : [];
+    });
+
+    // Salvar no localStorage quando mudar
+    useEffect(() => {
+        localStorage.setItem('financialDistribution', JSON.stringify(distribution));
+    }, [distribution]);
+
+    useEffect(() => {
+        localStorage.setItem('financialGoals', JSON.stringify(goals));
+    }, [goals]);
+
+    useEffect(() => {
+        localStorage.setItem('financialInvestments', JSON.stringify(investments));
+    }, [investments]);
+
+    // Handlers
+    const handleSaveGoal = (goal: Goal) => {
+        const existing = goals.find(g => g.id === goal.id);
+        if (existing) {
+            setGoals(goals.map(g => g.id === goal.id ? goal : g));
+        } else {
+            setGoals([...goals, goal]);
+        }
+        setEditingGoal(null);
+    };
+
+    const handleDeleteGoal = (id: string) => {
+        if (confirm('Deseja realmente excluir esta meta?')) {
+            setGoals(goals.filter(g => g.id !== id));
+        }
+    };
+
+    const handleSaveInvestment = (investment: Investment) => {
+        const existing = investments.find(i => i.id === investment.id);
+        if (existing) {
+            setInvestments(investments.map(i => i.id === investment.id ? investment : i));
+        } else {
+            setInvestments([...investments, investment]);
+        }
+        setEditingInvestment(null);
+    };
+
+    const handleDeleteInvestment = (id: string) => {
+        if (confirm('Deseja realmente excluir este investimento?')) {
+            setInvestments(investments.filter(i => i.id !== id));
+        }
+    };
 
     // Configuração das contas
     const ACCOUNTS = [
@@ -489,12 +576,220 @@ const FinancialManagement: React.FC = () => {
 
             </div>
 
+            {/* SEÇÃO DE METAS */}
+            {goals.length > 0 && (
+                <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                    <div className="flex items-center justify-between mb-6">
+                        <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                            <Target size={24} className="text-blue-500" />
+                            Metas Ativas
+                        </h3>
+                        <button
+                            onClick={() => { setEditingGoal(null); setShowGoalModal(true); }}
+                            className="text-sm font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                        >
+                            <Plus size={16} /> Nova Meta
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {goals.map(goal => {
+                            const progress = (goal.currentValue / goal.targetValue) * 100;
+                            const isCompleted = progress >= 100;
+                            const typeIcons: any = {
+                                revenue: '💰',
+                                profit: '📈',
+                                margin: '📊',
+                                ticket: '🎫',
+                                customers: '👥'
+                            };
+
+                            return (
+                                <div key={goal.id} className="p-5 bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl border-2 border-blue-200">
+                                    <div className="flex items-start justify-between mb-3">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-2xl">{typeIcons[goal.type]}</span>
+                                            <div>
+                                                <h4 className="font-bold text-gray-900 text-sm">{goal.name}</h4>
+                                                <p className="text-xs text-gray-500 capitalize">{goal.period}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-1">
+                                            <button
+                                                onClick={() => { setEditingGoal(goal); setShowGoalModal(true); }}
+                                                className="p-1 text-gray-400 hover:text-blue-600 transition"
+                                            >
+                                                <Edit size={14} />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDeleteGoal(goal.id)}
+                                                className="p-1 text-gray-400 hover:text-red-600 transition"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-gray-600">Atual</span>
+                                            <span className="font-bold text-gray-900">{goal.currentValue.toFixed(2)}</span>
+                                        </div>
+                                        <div className="w-full bg-blue-200 rounded-full h-3">
+                                            <div
+                                                className={`h-3 rounded-full transition-all ${isCompleted ? 'bg-green-500' : 'bg-blue-500'}`}
+                                                style={{ width: `${Math.min(progress, 100)}%` }}
+                                            />
+                                        </div>
+                                        <div className="flex justify-between text-xs">
+                                            <span className={`font-bold ${isCompleted ? 'text-green-600' : 'text-blue-600'}`}>
+                                                {progress.toFixed(0)}%
+                                            </span>
+                                            <span className="text-gray-600">Meta: {goal.targetValue.toFixed(2)}</span>
+                                        </div>
+                                        {goal.deadline && (
+                                            <p className="text-xs text-gray-500 mt-2">
+                                                📅 {new Date(goal.deadline).toLocaleDateString('pt-BR')}
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {/* SEÇÃO DE INVESTIMENTOS */}
+            {investments.length > 0 && (
+                <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                    <div className="flex items-center justify-between mb-6">
+                        <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                            <Rocket size={24} className="text-purple-500" />
+                            Investimentos
+                        </h3>
+                        <button
+                            onClick={() => { setEditingInvestment(null); setShowInvestmentModal(true); }}
+                            className="text-sm font-bold text-purple-600 hover:text-purple-700 flex items-center gap-1"
+                        >
+                            <Plus size={16} /> Novo Investimento
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        {investments.map(inv => {
+                            const categoryIcons: any = {
+                                equipment: '🔧',
+                                renovation: '🏗️',
+                                marketing: '📣',
+                                technology: '💻',
+                                expansion: '🚀',
+                                other: '📦'
+                            };
+
+                            const statusColors: any = {
+                                planned: 'bg-gray-100 text-gray-700',
+                                approved: 'bg-blue-100 text-blue-700',
+                                in_progress: 'bg-yellow-100 text-yellow-700',
+                                completed: 'bg-green-100 text-green-700',
+                                cancelled: 'bg-red-100 text-red-700'
+                            };
+
+                            const statusLabels: any = {
+                                planned: 'Planejado',
+                                approved: 'Aprovado',
+                                in_progress: 'Em Andamento',
+                                completed: 'Concluído',
+                                cancelled: 'Cancelado'
+                            };
+
+                            return (
+                                <div key={inv.id} className="p-5 bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl border-2 border-purple-200">
+                                    <div className="flex items-start justify-between mb-3">
+                                        <div className="flex items-center gap-2 flex-1">
+                                            <span className="text-2xl">{categoryIcons[inv.category]}</span>
+                                            <div className="flex-1">
+                                                <h4 className="font-bold text-gray-900 text-sm">{inv.name}</h4>
+                                                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${statusColors[inv.status]}`}>
+                                                    {statusLabels[inv.status]}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-1">
+                                            <button
+                                                onClick={() => { setEditingInvestment(inv); setShowInvestmentModal(true); }}
+                                                className="p-1 text-gray-400 hover:text-purple-600 transition"
+                                            >
+                                                <Edit size={14} />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDeleteInvestment(inv.id)}
+                                                className="p-1 text-gray-400 hover:text-red-600 transition"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3 mb-3">
+                                        <div className="text-center p-2 bg-white rounded-lg">
+                                            <p className="text-xs text-gray-500">Investimento</p>
+                                            <p className="font-black text-purple-600">{formatCurrency(inv.amount)}</p>
+                                        </div>
+                                        <div className="text-center p-2 bg-white rounded-lg">
+                                            <p className="text-xs text-gray-500">ROI Esperado</p>
+                                            <p className="font-black text-green-600">{inv.expectedROI}%</p>
+                                        </div>
+                                    </div>
+
+                                    {inv.actualROI !== undefined && (
+                                        <div className="p-2 bg-white rounded-lg mb-2">
+                                            <p className="text-xs text-gray-500 text-center">ROI Atual</p>
+                                            <p className="font-black text-center text-lg" style={{
+                                                color: inv.actualROI >= inv.expectedROI ? '#10B981' : '#F59E0B'
+                                            }}>
+                                                {inv.actualROI}%
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    {inv.notes && (
+                                        <p className="text-xs text-gray-600 mt-2 line-clamp-2">{inv.notes}</p>
+                                    )}
+
+                                    {inv.startDate && (
+                                        <p className="text-xs text-gray-500 mt-2">
+                                            📅 {new Date(inv.startDate).toLocaleDateString('pt-BR')}
+                                            {inv.completionDate && ` → ${new Date(inv.completionDate).toLocaleDateString('pt-BR')}`}
+                                        </p>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
             {/* MODALS */}
             <DistributionModal
                 isOpen={showDistributionModal}
                 onClose={() => setShowDistributionModal(false)}
                 distribution={distribution}
                 onSave={(newDist) => setDistribution(newDist)}
+            />
+
+            <GoalModal
+                isOpen={showGoalModal}
+                onClose={() => { setShowGoalModal(false); setEditingGoal(null); }}
+                onSave={handleSaveGoal}
+                editingGoal={editingGoal}
+            />
+
+            <InvestmentModal
+                isOpen={showInvestmentModal}
+                onClose={() => { setShowInvestmentModal(false); setEditingInvestment(null); }}
+                onSave={handleSaveInvestment}
+                editingInvestment={editingInvestment}
             />
 
         </div>
