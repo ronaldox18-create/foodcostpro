@@ -13,7 +13,11 @@ import {
     ArrowRight,
     ArrowUpDown,
     TrendingUp,
-    XCircle
+    XCircle,
+    ShoppingBag,
+    CheckCircle2,
+    Activity,
+    Printer
 } from 'lucide-react';
 import { formatCurrency } from '../utils/calculations';
 import { Ingredient, UnitType } from '../types';
@@ -23,7 +27,7 @@ import {
 } from 'recharts';
 
 const Inventory: React.FC = () => {
-    const { ingredients, addIngredient, updateIngredient, deleteIngredient } = useApp();
+    const { ingredients, addIngredient, updateIngredient, deleteIngredient, orders, products } = useApp();
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
@@ -83,6 +87,92 @@ const Inventory: React.FC = () => {
 
         return { valueData, statusData };
     }, [ingredients, stockMetrics]);
+
+    // Análise de Consumo (últimos 7 dias)
+    const consumptionAnalysis = useMemo(() => {
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+        const ingredientConsumption = new Map<string, { name: string; consumed: number; unit: string }>();
+
+        // Calcular consumo baseado em pedidos dos últimos 7 dias
+        orders.forEach(order => {
+            if (new Date(order.date) < sevenDaysAgo || order.status === 'canceled') return;
+
+            order.items.forEach(item => {
+                const product = products.find(p => p.id === item.productId);
+                if (!product || !product.recipe) return;
+
+                product.recipe.forEach(recipeItem => {
+                    const ingredient = ingredients.find(i => i.id === recipeItem.ingredientId);
+                    if (!ingredient) return;
+
+                    let consumedQty = recipeItem.quantityUsed * item.quantity;
+
+                    // Converter unidades se necessário
+                    if (ingredient.purchaseUnit === 'kg' && recipeItem.unitUsed === 'g') {
+                        consumedQty /= 1000;
+                    } else if (ingredient.purchaseUnit === 'l' && recipeItem.unitUsed === 'ml') {
+                        consumedQty /= 1000;
+                    }
+
+                    const existing = ingredientConsumption.get(ingredient.id) || {
+                        name: ingredient.name,
+                        consumed: 0,
+                        unit: ingredient.purchaseUnit
+                    };
+                    existing.consumed += consumedQty;
+                    ingredientConsumption.set(ingredient.id, existing);
+                });
+            });
+        });
+
+        return Array.from(ingredientConsumption.values())
+            .sort((a, b) => b.consumed - a.consumed)
+            .slice(0, 10);
+    }, [orders, products, ingredients]);
+
+    // Lista de Compras Automática
+    const shoppingList = useMemo(() => {
+        const needsToBuy = [];
+
+        ingredients.forEach(ing => {
+            const current = ing.currentStock || 0;
+            const min = ing.minStock || 0;
+
+            if (current <= min) {
+                // Calcular consumo médio diário dos últimos 7 dias
+                const consumption = consumptionAnalysis.find(c => c.name === ing.name);
+                const avgDailyConsumption = consumption ? consumption.consumed / 7 : 0;
+
+                // Sugerir quantidade para 15 dias
+                const suggestedQty = Math.max(
+                    (min - current) + (avgDailyConsumption * 15),
+                    ing.purchaseQuantity // Pelo menos uma unidade de compra
+                );
+
+                const pricePerUnit = ing.purchasePrice / ing.purchaseQuantity;
+                const estimatedCost = Math.ceil(suggestedQty / ing.purchaseQuantity) * ing.purchasePrice;
+
+                needsToBuy.push({
+                    id: ing.id,
+                    name: ing.name,
+                    currentStock: current,
+                    minStock: min,
+                    suggestedQty: Math.ceil(suggestedQty * 1000) / 1000,
+                    unit: ing.purchaseUnit,
+                    estimatedCost,
+                    avgDailyConsumption,
+                    priority: current <= 0 ? 'urgent' : current <= min * 0.5 ? 'high' : 'medium'
+                });
+            }
+        });
+
+        return needsToBuy.sort((a, b) => {
+            const priorityOrder = { urgent: 0, high: 1, medium: 2 };
+            return priorityOrder[a.priority] - priorityOrder[b.priority];
+        });
+    }, [ingredients, consumptionAnalysis]);
 
     const COLORS = ['#10B981', '#EF4444', '#F59E0B', '#3B82F6', '#6366F1'];
 
@@ -210,6 +300,249 @@ const Inventory: React.FC = () => {
         }
     };
 
+    // Função para imprimir lista de compras
+    const handlePrintShoppingList = () => {
+        if (shoppingList.length === 0) {
+            alert('Nenhum item na lista de compras no momento.');
+            return;
+        }
+
+        const printWindow = window.open('', '', 'width=800,height=600');
+        if (!printWindow) return;
+
+        const totalCost = shoppingList.reduce((sum, item) => sum + item.estimatedCost, 0);
+        const currentDate = new Date().toLocaleDateString('pt-BR', {
+            day: '2-digit',
+            month: 'long',
+            year: 'numeric'
+        });
+
+        const html = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>Lista de Compras - FoodCost Pro</title>
+                <style>
+                    * { margin: 0; padding: 0; box-sizing: border-box; }
+                    body {
+                        font-family: 'Arial', sans-serif;
+                        padding: 40px;
+                        background: white;
+                        color: #1f2937;
+                    }
+                    .header {
+                        border-bottom: 4px solid #f97316;
+                        padding-bottom: 20px;
+                        margin-bottom: 30px;
+                    }
+                    .header h1 {
+                        font-size: 28px;
+                        font-weight: bold;
+                        color: #f97316;
+                        margin-bottom: 5px;
+                    }
+                    .header .subtitle {
+                        color: #6b7280;
+                        font-size: 14px;
+                    }
+                    .date {
+                        text-align: right;
+                        color: #6b7280;
+                        font-size: 12px;
+                        margin-top: -30px;
+                        margin-bottom: 20px;
+                    }
+                    table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-bottom: 30px;
+                    }
+                    thead {
+                        background: #f3f4f6;
+                    }
+                    th {
+                        padding: 12px;
+                        text-align: left;
+                        font-size: 11px;
+                        text-transform: uppercase;
+                        font-weight: bold;
+                        color: #374151;
+                        border-bottom: 2px solid #d1d5db;
+                    }
+                    td {
+                        padding: 12px;
+                        border-bottom: 1px solid #e5e7eb;
+                        font-size: 13px;
+                    }
+                    .priority-urgent {
+                        background: #fef2f2;
+                        border-left: 4px solid #ef4444;
+                    }
+                    .priority-high {
+                        background: #fff7ed;
+                        border-left: 4px solid #f97316;
+                    }
+                    .priority-medium {
+                        background: #fffbeb;
+                        border-left: 4px solid #f59e0b;
+                    }
+                    .priority-badge {
+                        display: inline-block;
+                        padding: 3px 8px;
+                        border-radius: 12px;
+                        font-size: 10px;
+                        font-weight: bold;
+                    }
+                    .urgent { background: #fee2e2; color: #991b1b; }
+                    .high { background: #fed7aa; color: #9a3412; }
+                    .medium { background: #fef3c7; color: #92400e; }
+                    .item-name {
+                        font-weight: bold;
+                        color: #111827;
+                    }
+                    .stock-info {
+                        color: #6b7280;
+                        font-size: 11px;
+                        margin-top: 2px;
+                    }
+                    .number {
+                        font-family: 'Courier New', monospace;
+                        font-weight: bold;
+                    }
+                    .total-section {
+                        margin-top: 20px;
+                        padding: 20px;
+                        background: #f9fafb;
+                        border: 2px solid #e5e7eb;
+                        border-radius: 8px;
+                    }
+                    .total-row {
+                        display: flex;
+                        justify-content: space-between;
+                        padding: 8px 0;
+                        font-size: 14px;
+                    }
+                    .total-final {
+                        border-top: 2px solid #d1d5db;
+                        margin-top: 10px;
+                        padding-top: 10px;
+                        font-size: 18px;
+                        font-weight: bold;
+                    }
+                    .footer {
+                        margin-top: 40px;
+                        padding-top: 20px;
+                        border-top: 1px solid #e5e7eb;
+                        text-align: center;
+                        color: #9ca3af;
+                        font-size: 11px;
+                    }
+                    .checkbox {
+                        width: 20px;
+                        height: 20px;
+                        border: 2px solid #d1d5db;
+                        display: inline-block;
+                        vertical-align: middle;
+                    }
+                    @media print {
+                        body { padding: 20px; }
+                        .no-print { display: none; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1>📋 Lista de Compras</h1>
+                    <div class="subtitle">FoodCost Pro - Gestão Inteligente de Estoque</div>
+                </div>
+
+                <div class="date">
+                    <strong>Data de Geração:</strong> ${currentDate}
+                </div>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 5%;">✓</th>
+                            <th style="width: 30%;">Item</th>
+                            <th style="width: 12%;">Estoque Atual</th>
+                            <th style="width: 12%;">Qtd. Sugerida</th>
+                            <th style="width: 13%;">Último Preço</th>
+                            <th style="width: 13%;">Custo Estimado</th>
+                            <th style="width: 15%;">Prioridade</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${shoppingList.map(item => {
+            const ing = ingredients.find(i => i.id === item.id);
+            const pricePerUnit = ing ? ing.purchasePrice / ing.purchaseQuantity : 0;
+
+            return `
+                                <tr class="priority-${item.priority}">
+                                    <td><span class="checkbox"></span></td>
+                                    <td>
+                                        <div class="item-name">${item.name}</div>
+                                        <div class="stock-info">
+                                            Mínimo: ${item.minStock.toFixed(3)} ${formatUnitLabel(item.unit)}
+                                            ${item.avgDailyConsumption > 0 ?
+                    `<br>Consumo médio: ${item.avgDailyConsumption.toFixed(3)} ${formatUnitLabel(item.unit)}/dia`
+                    : ''}
+                                        </div>
+                                    </td>
+                                    <td class="number">${item.currentStock.toFixed(3)} ${formatUnitLabel(item.unit)}</td>
+                                    <td class="number" style="color: #2563eb; font-weight: bold;">
+                                        ${item.suggestedQty.toFixed(3)} ${formatUnitLabel(item.unit)}
+                                    </td>
+                                    <td class="number">${formatCurrency(pricePerUnit)}/${formatUnitLabel(item.unit)}</td>
+                                    <td class="number" style="font-weight: bold;">${formatCurrency(item.estimatedCost)}</td>
+                                    <td>
+                                        <span class="priority-badge ${item.priority}">
+                                            ${item.priority === 'urgent' ? '🔴 URGENTE' :
+                    item.priority === 'high' ? '🟠 ALTA' : '🟡 MÉDIA'}
+                                        </span>
+                                    </td>
+                                </tr>
+                            `;
+        }).join('')}
+                    </tbody>
+                </table>
+
+                <div class="total-section">
+                    <div class="total-row">
+                        <span>Total de Itens:</span>
+                        <span class="number">${shoppingList.length} ${shoppingList.length === 1 ? 'item' : 'itens'}</span>
+                    </div>
+                    <div class="total-row">
+                        <span>Itens Urgentes:</span>
+                        <span class="number" style="color: #dc2626;">
+                            ${shoppingList.filter(i => i.priority === 'urgent').length}
+                        </span>
+                    </div>
+                    <div class="total-row total-final">
+                        <span>CUSTO TOTAL ESTIMADO:</span>
+                        <span style="color: #f97316;">${formatCurrency(totalCost)}</span>
+                    </div>
+                </div>
+
+                <div class="footer">
+                    <p><strong>FoodCost Pro</strong> - Sistema de Gestão para Restaurantes</p>
+                    <p>Lista gerada automaticamente com base no estoque atual e consumo histórico</p>
+                </div>
+
+                <script>
+                    window.onload = function() {
+                        window.print();
+                    };
+                </script>
+            </body>
+            </html>
+        `;
+
+        printWindow.document.write(html);
+        printWindow.document.close();
+    };
+
     // --- MODAL SIMPLIFIED VARS ---
     const adjustmentIngredient = adjustment ? ingredients.find(i => i.id === adjustment.id) : null;
     const currentStockDisplay = adjustmentIngredient ? (adjustmentIngredient.currentStock || 0) : 0;
@@ -335,6 +668,145 @@ const Inventory: React.FC = () => {
                         </div>
                     </div>
                 </div>
+            </div>
+
+            {/* LISTA DE COMPRAS AUTOMÁTICA + CONSUMO */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                {/* Lista de Compras */}
+                <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                    <div className="flex items-center justify-between mb-6">
+                        <h4 className="font-bold text-gray-900 flex items-center gap-2">
+                            <ShoppingBag size={20} className="text-orange-500" />
+                            Lista de Compras Automática
+                        </h4>
+                        <div className="flex items-center gap-3">
+                            {shoppingList.length > 0 && (
+                                <>
+                                    <button
+                                        onClick={handlePrintShoppingList}
+                                        className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-xl font-bold hover:bg-orange-700 transition-all shadow-lg shadow-orange-200 text-sm"
+                                    >
+                                        <Printer size={16} />
+                                        Imprimir Lista
+                                    </button>
+                                    <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-bold">
+                                        {shoppingList.length} {shoppingList.length === 1 ? 'item' : 'itens'}
+                                    </span>
+                                </>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="space-y-3 max-h-96 overflow-y-auto">
+                        {shoppingList.length > 0 ? (
+                            <>
+                                {shoppingList.map(item => (
+                                    <div
+                                        key={item.id}
+                                        className={`p-4 rounded-xl border-l-4 ${item.priority === 'urgent'
+                                            ? 'bg-red-50 border-red-500'
+                                            : item.priority === 'high'
+                                                ? 'bg-orange-50 border-orange-500'
+                                                : 'bg-yellow-50 border-yellow-500'
+                                            }`}
+                                    >
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <p className="font-bold text-gray-900 text-sm">{item.name}</p>
+                                                    {item.priority === 'urgent' && (
+                                                        <span className="flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full">
+                                                            <AlertTriangle size={10} /> URGENTE
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="text-xs text-gray-600 space-y-0.5">
+                                                    <p>Estoque: <span className="font-mono font-bold">{item.currentStock.toFixed(3)} {formatUnitLabel(item.unit)}</span></p>
+                                                    <p>Sugerido: <span className="font-mono font-bold text-blue-600">{item.suggestedQty.toFixed(3)} {formatUnitLabel(item.unit)}</span></p>
+                                                    {item.avgDailyConsumption > 0 && (
+                                                        <p className="text-[11px] text-gray-500">
+                                                            📊 Consumo médio: {item.avgDailyConsumption.toFixed(3)} {formatUnitLabel(item.unit)}/dia
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className="text-right flex-shrink-0">
+                                                <p className="text-xs text-gray-500 mb-1">Custo estimado</p>
+                                                <p className="font-black text-gray-900">{formatCurrency(item.estimatedCost)}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                                <div className="pt-4 border-t border-gray-200">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-sm font-bold text-gray-700">Total Estimado:</span>
+                                        <span className="text-lg font-black text-gray-900">
+                                            {formatCurrency(shoppingList.reduce((sum, item) => sum + item.estimatedCost, 0))}
+                                        </span>
+                                    </div>
+                                </div>
+                            </>
+                        ) : (
+                            <div className="text-center py-12">
+                                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                                    <CheckCircle2 className="text-green-600" size={32} />
+                                </div>
+                                <p className="text-gray-600 font-medium">Estoque em dia!</p>
+                                <p className="text-xs text-gray-400 mt-1">Nenhum item precisa ser reposto no momento.</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Consumo Últimos 7 Dias */}
+                <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                    <h4 className="font-bold text-gray-900 mb-6 flex items-center gap-2">
+                        <Activity size={20} className="text-blue-500" />
+                        Top 10 Consumo (Últimos 7 Dias)
+                    </h4>
+
+                    <div className="space-y-2">
+                        {consumptionAnalysis.length > 0 ? (
+                            consumptionAnalysis.map((item, index) => {
+                                const maxValue = consumptionAnalysis[0].consumed;
+                                const percentage = (item.consumed / maxValue) * 100;
+
+                                return (
+                                    <div key={index} className="group">
+                                        <div className="flex items-center justify-between text-xs mb-1">
+                                            <span className="font-semibold text-gray-700 flex items-center gap-2">
+                                                <span className={`flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold ${index === 0 ? 'bg-yellow-100 text-yellow-700' :
+                                                    index === 1 ? 'bg-gray-100 text-gray-600' :
+                                                        index === 2 ? 'bg-orange-50 text-orange-600' :
+                                                            'bg-gray-50 text-gray-500'
+                                                    }`}>
+                                                    {index + 1}
+                                                </span>
+                                                {item.name}
+                                            </span>
+                                            <span className="font-mono font-bold text-gray-900">
+                                                {item.consumed.toFixed(3)} {formatUnitLabel(item.unit as UnitType)}
+                                            </span>
+                                        </div>
+                                        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                            <div
+                                                className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full transition-all duration-500"
+                                                style={{ width: `${percentage}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        ) : (
+                            <div className="text-center py-12">
+                                <Package className="mx-auto text-gray-300 mb-3" size={48} />
+                                <p className="text-gray-400 text-sm">Nenhum consumo registrado nos últimos 7 dias</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
             </div>
 
             {/* CONTROLS */}

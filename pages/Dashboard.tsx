@@ -320,6 +320,83 @@ const Dashboard: React.FC = () => {
         }));
     }, [periodStats.orders]);
 
+    // Análise do melhor dia da semana
+    const bestDayAnalysis = useMemo(() => {
+        const dayStats = new Map<string, { revenue: number; orders: number }>();
+        const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+        periodStats.orders.forEach(order => {
+            const dayOfWeek = new Date(order.date).getDay();
+            const dayName = dayNames[dayOfWeek];
+
+            const existing = dayStats.get(dayName) || { revenue: 0, orders: 0 };
+            existing.revenue += order.totalAmount;
+            existing.orders++;
+            dayStats.set(dayName, existing);
+        });
+
+        const dayArray = Array.from(dayStats.entries()).map(([day, stats]) => ({
+            day,
+            ...stats,
+            avgTicket: stats.orders > 0 ? stats.revenue / stats.orders : 0
+        }));
+
+        const bestDay = dayArray.reduce((max, current) =>
+            current.revenue > max.revenue ? current : max,
+            { day: '-', revenue: 0, orders: 0, avgTicket: 0 }
+        );
+
+        return { bestDay, allDays: dayArray };
+    }, [periodStats.orders]);
+
+    // Sugestões inteligentes baseadas nos dados
+    const smartSuggestions = useMemo(() => {
+        const suggestions = [];
+
+        // Sugestão baseada em ticket médio
+        if (periodStats.avgTicket > 0 && periodStats.avgTicket < 30) {
+            suggestions.push({
+                icon: '💡',
+                title: 'Aumente o Ticket Médio',
+                suggestion: 'Crie combos ou sugira acompanhamentos para aumentar o valor médio por pedido.',
+                priority: 'high'
+            });
+        }
+
+        // Sugestão baseada em horários de pico
+        const peakHour = peakHoursAnalysis.reduce((max, h) => h.revenue > max.revenue ? h : max, peakHoursAnalysis[0]);
+        if (peakHour && peakHour.hour) {
+            suggestions.push({
+                icon: '⏰',
+                title: `Pico às ${peakHour.hour}h`,
+                suggestion: `Garanta estoque extra e equipe disponível neste horário.`,
+                priority: 'medium'
+            });
+        }
+
+        // Sugestão baseada no melhor dia
+        if (bestDayAnalysis.bestDay.day !== '-') {
+            suggestions.push({
+                icon: '📅',
+                title: `${bestDayAnalysis.bestDay.day} é seu melhor dia`,
+                suggestion: `Crie promoções para os dias menos movimentados.`,
+                priority: 'medium'
+            });
+        }
+
+        // Sugestão de margem
+        if (periodStats.profitMargin < 50) {
+            suggestions.push({
+                icon: '📊',
+                title: 'Revise seus Preços',
+                suggestion: `Sua margem de ${periodStats.profitMargin.toFixed(1)}% está abaixo do ideal (60%+).`,
+                priority: 'high'
+            });
+        }
+
+        return suggestions;
+    }, [periodStats, peakHoursAnalysis, bestDayAnalysis]);
+
     // Análise de saúde do negócio
     const healthIndicators = useMemo(() => {
         const indicators = [];
@@ -777,8 +854,8 @@ const Dashboard: React.FC = () => {
                                 <div
                                     key={idx}
                                     className={`p-4 rounded-xl border-l-4 ${indicator.type === 'alert' ? 'bg-red-50 border-red-500' :
-                                            indicator.type === 'warning' ? 'bg-yellow-50 border-yellow-500' :
-                                                'bg-green-50 border-green-500'
+                                        indicator.type === 'warning' ? 'bg-yellow-50 border-yellow-500' :
+                                            'bg-green-50 border-green-500'
                                         }`}
                                 >
                                     <div className="flex gap-3">
@@ -818,8 +895,8 @@ const Dashboard: React.FC = () => {
                                 <div key={i} className="flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg transition-colors">
                                     <div className="flex items-center gap-2 flex-1 min-w-0">
                                         <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${i === 0 ? 'bg-yellow-100 text-yellow-700' :
-                                                i === 1 ? 'bg-gray-100 text-gray-600' :
-                                                    i === 2 ? 'bg-orange-50 text-orange-600' : 'bg-gray-50 text-gray-400'
+                                            i === 1 ? 'bg-gray-100 text-gray-600' :
+                                                i === 2 ? 'bg-orange-50 text-orange-600' : 'bg-gray-50 text-gray-400'
                                             }`}>
                                             {i + 1}
                                         </span>
@@ -867,6 +944,69 @@ const Dashboard: React.FC = () => {
                             );
                         })()}
                     </div>
+
+                    {/* MELHOR DIA DA SEMANA */}
+                    <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-5 text-white shadow-lg">
+                        <div className="flex items-center gap-2 mb-3">
+                            <CalendarCheck size={18} />
+                            <h3 className="font-bold text-sm">Melhor Dia da Semana</h3>
+                        </div>
+
+                        {bestDayAnalysis.bestDay.revenue > 0 ? (
+                            <div className="space-y-2">
+                                <div className="text-center py-3 bg-white/10 backdrop-blur-sm rounded-xl border border-white/20">
+                                    <p className="text-3xl font-black mb-1">{bestDayAnalysis.bestDay.day}</p>
+                                    <p className="text-xs text-indigo-100">
+                                        {formatCurrency(bestDayAnalysis.bestDay.revenue)} em vendas
+                                    </p>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div className="bg-white/10 rounded-lg p-2 text-center">
+                                        <p className="text-xs text-indigo-100">Pedidos</p>
+                                        <p className="font-bold">{bestDayAnalysis.bestDay.orders}</p>
+                                    </div>
+                                    <div className="bg-white/10 rounded-lg p-2 text-center">
+                                        <p className="text-xs text-indigo-100">Ticket Médio</p>
+                                        <p className="font-bold">{formatCurrency(bestDayAnalysis.bestDay.avgTicket)}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <p className="text-center text-indigo-100 text-xs py-4">Sem dados suficientes</p>
+                        )}
+                    </div>
+
+                    {/* SUGESTÕES INTELIGENTES */}
+                    {smartSuggestions.length > 0 && (
+                        <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+                            <div className="flex items-center gap-2 mb-4">
+                                <Lightbulb className="text-yellow-500" size={18} />
+                                <h3 className="font-bold text-sm text-gray-900">Sugestões Inteligentes</h3>
+                            </div>
+
+                            <div className="space-y-3">
+                                {smartSuggestions.map((sug, idx) => (
+                                    <div
+                                        key={idx}
+                                        className={`p-3 rounded-xl border-l-4 ${sug.priority === 'high'
+                                                ? 'bg-orange-50 border-orange-500'
+                                                : sug.priority === 'medium'
+                                                    ? 'bg-blue-50 border-blue-500'
+                                                    : 'bg-gray-50 border-gray-300'
+                                            }`}
+                                    >
+                                        <div className="flex gap-2">
+                                            <span className="text-lg flex-shrink-0">{sug.icon}</span>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="font-bold text-xs text-gray-900 mb-1">{sug.title}</p>
+                                                <p className="text-[11px] text-gray-600 leading-relaxed">{sug.suggestion}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     {/* QUICK ACTIONS */}
                     <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
