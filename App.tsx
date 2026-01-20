@@ -29,6 +29,7 @@ import PDV from './pages/PDV'; // Sistema de PDV (Ponto de Venda)
 import StockMovements from './pages/StockMovements'; // Histórico de Movimentação
 import WhatsAppBotSetup from './pages/WhatsAppBotSetup'; // WhatsApp Bot - 100% Grátis
 import Reports from './pages/Reports'; // Sistema de Relatórios Avançado
+import FinancialManagement from './pages/FinancialManagement'; // Gestão Financeira Empresarial
 
 // Menu Pages
 import MenuLayout from './pages/Menu/MenuLayout';
@@ -91,6 +92,7 @@ const AppRoutes: React.FC = () => {
       <Route path="/business-hours" element={<PrivateLayout><BusinessHoursAdvanced /></PrivateLayout>} />
       <Route path="/loyalty-settings" element={<PrivateLayout><LoyaltySettings /></PrivateLayout>} />
       <Route path="/reports" element={<PrivateLayout><Reports /></PrivateLayout>} />
+      <Route path="/financial-management" element={<PrivateLayout><FinancialManagement /></PrivateLayout>} />
       <Route path="/advisor" element={<PrivateLayout><Advisor /></PrivateLayout>} />
       <Route path="/account" element={<PrivateLayout><Account /></PrivateLayout>} />
 

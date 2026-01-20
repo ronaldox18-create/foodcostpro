@@ -3,7 +3,7 @@ import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, ShoppingBasket, ChefHat, Settings, Menu, Landmark, Users, ClipboardList, Boxes, Sparkles, LogOut, User as UserIcon, LayoutGrid, Smartphone, Tag, PackageCheck, Clock, Crown, CreditCard, History, MessageCircle, FileBarChart } from 'lucide-react';
+import { LayoutDashboard, ShoppingBasket, ChefHat, Settings, Menu, Landmark, Users, ClipboardList, Boxes, Sparkles, LogOut, User as UserIcon, LayoutGrid, Smartphone, Tag, PackageCheck, Clock, Crown, CreditCard, History, MessageCircle, FileBarChart, PieChart as PieChartIcon } from 'lucide-react';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -78,6 +78,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           <NavItem to="/ingredients" icon={ShoppingBasket} label="Ingredientes" active={location.pathname === '/ingredients'} />
           <NavItem to="/stock-movements" icon={History} label="Histórico" active={location.pathname === '/stock-movements'} />
           <NavItem to="/expenses" icon={Landmark} label="Despesas Fixas" active={location.pathname === '/expenses'} />
+          <NavItem to="/financial-management" icon={PieChartIcon} label="Gestão Financeira 💼" active={location.pathname === '/financial-management'} highlight={true} />
 
           <div className="pt-6 pb-2 px-2">
             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Sistema</p>
