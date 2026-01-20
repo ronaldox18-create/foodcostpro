@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { X, Save } from 'lucide-react';
+import { X, Save, Sparkles, Loader } from 'lucide-react';
+import { askAI } from '../utils/aiHelper';
 
 interface DistributionModalProps {
     isOpen: boolean;
@@ -16,11 +17,76 @@ interface DistributionModalProps {
 
 const DistributionModal: React.FC<DistributionModalProps> = ({ isOpen, onClose, distribution, onSave }) => {
     const [values, setValues] = useState(distribution);
+    const [isAiLoading, setIsAiLoading] = useState(false);
 
     if (!isOpen) return null;
 
     const total = Object.values(values).reduce((sum, val) => sum + val, 0);
     const isValid = total === 100;
+
+    const handleAiSuggest = async () => {
+        setIsAiLoading(true);
+
+        const prompt = `Atue como consultor financeiro empresarial especializado em restaurantes.
+        
+TAREFA:
+Sugira uma distribuição ideal de lucros líquidos considerando:
+- Pró-labore dos sócios (remuneração mensal)
+- Reserva de emergência (segurança financeira)
+- Investimentos (crescimento e equipamentos)
+- Melhorias (treinamento e inovação)
+- Distribuição de lucros (bonificação)
+
+Considere que:
+- Reserva de emergência é crítica (recomendado 20-30%)
+- Pró-labore deve ser justo mas não excessivo (35-50%)
+- Investimentos garantem crescimento (10-20%)
+- Melhorias mantêm competitividade (5-15%)
+- Distribuição extra motiva sócios (5-10%)
+
+RETORNE APENAS um JSON puro (sem markdown) no formato:
+{
+  "prolabore": número entre 0-100,
+  "emergency": número entre 0-100,
+  "investment": número entre 0-100,
+  "improvement": número entre 0-100,
+  "profit": número entre 0-100,
+  "reasoning": "Explicação breve da lógica em 1 frase"
+}
+
+O total DEVE ser exatamente 100.`;
+
+        try {
+            const result = await askAI(prompt);
+            const cleanJson = result.replace(/```json/g, '').replace(/```/g, '').trim();
+            const suggestion = JSON.parse(cleanJson);
+
+            // Validar que soma 100
+            const total = suggestion.prolabore + suggestion.emergency + suggestion.investment +
+                suggestion.improvement + suggestion.profit;
+
+            if (Math.abs(total - 100) < 1) { // Permitir margem de erro mínima
+                setValues({
+                    prolabore: Math.round(suggestion.prolabore),
+                    emergency: Math.round(suggestion.emergency),
+                    investment: Math.round(suggestion.investment),
+                    improvement: Math.round(suggestion.improvement),
+                    profit: Math.round(suggestion.profit)
+                });
+
+                if (suggestion.reasoning) {
+                    alert(`💡 IA Sugeriu:\n\n${suggestion.reasoning}`);
+                }
+            } else {
+                alert('A IA gerou valores inconsistentes. Tente novamente.');
+            }
+        } catch (e) {
+            console.error('Erro ao processar sugestão da IA:', e);
+            alert('Erro ao gerar sugestão. Tente novamente.');
+        } finally {
+            setIsAiLoading(false);
+        }
+    };
 
     const handleSave = () => {
         if (isValid) {
@@ -43,6 +109,25 @@ const DistributionModal: React.FC<DistributionModalProps> = ({ isOpen, onClose, 
                     <p className="text-sm text-gray-600">
                         Configure como o lucro líquido será distribuído automaticamente entre as contas.
                     </p>
+
+                    {/* Botão de IA */}
+                    <button
+                        onClick={handleAiSuggest}
+                        disabled={isAiLoading}
+                        className="w-full p-4 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-lg transition flex items-center justify-center gap-2"
+                    >
+                        {isAiLoading ? (
+                            <>
+                                <Loader size={20} className="animate-spin" />
+                                Gerando Sugestão Inteligente...
+                            </>
+                        ) : (
+                            <>
+                                <Sparkles size={20} className="text-yellow-300" />
+                                🤖 Sugerir Distribuição Ideal com IA
+                            </>
+                        )}
+                    </button>
 
                     {/* Sliders */}
                     <div className="space-y-5">
@@ -149,8 +234,8 @@ const DistributionModal: React.FC<DistributionModalProps> = ({ isOpen, onClose, 
                         onClick={handleSave}
                         disabled={!isValid}
                         className={`flex-1 px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition ${isValid
-                                ? 'bg-gray-900 text-white hover:bg-black'
-                                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                            ? 'bg-gray-900 text-white hover:bg-black'
+                            : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                             }`}
                     >
                         <Save size={20} />
