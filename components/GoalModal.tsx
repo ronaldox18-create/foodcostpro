@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { X, Save, Target } from 'lucide-react';
+import { X, Save, Target, Sparkles, Loader } from 'lucide-react';
+import { askAI } from '../utils/aiHelper';
 
 interface Goal {
     id: string;
@@ -29,8 +30,77 @@ const GoalModal: React.FC<GoalModalProps> = ({ isOpen, onClose, onSave, editingG
             deadline: ''
         }
     );
+    const [isAiLoading, setIsAiLoading] = useState(false);
 
     if (!isOpen) return null;
+
+    const handleAiSuggest = async () => {
+        if (!formData.type) {
+            alert('Selecione o tipo de meta primeiro!');
+            return;
+        }
+
+        setIsAiLoading(true);
+
+        const typeLabels: any = {
+            revenue: 'Faturamento',
+            profit: 'Lucro',
+            margin: 'Margem',
+            ticket: 'Ticket Médio',
+            customers: 'Novos Clientes'
+        };
+
+        const prompt = `Atue como consultor de negócios especializado em restaurantes.
+
+CONTEXTO:
+O usuário quer definir uma meta de ${typeLabels[formData.type]} ${formData.period === 'monthly' ? 'mensal' : formData.period === 'quarterly' ? 'trimestral' : 'anual'}.
+
+TAREFA:
+Sugira uma meta REALISTA e DESAFIADORA considerando:
+- Tipo: ${typeLabels[formData.type]}
+- Período: ${formData.period}
+- Setor: Restaurante/Food Service
+- Boas práticas do mercado
+
+Para ${formData.type}:
+${formData.type === 'revenue' ? '- Crescimento saudável: 10-30% ao mês para novos negócios, 5-15% para estabelecidos' : ''}
+${formData.type === 'profit' ? '- Margem líquida ideal: 8-15% do faturamento' : ''}
+${formData.type === 'margin' ? '- Margem bruta saudável: 60-70%' : ''}
+${formData.type === 'ticket' ? '- Ticket médio brasileiro: R$ 35-80 dependendo do tipo' : ''}
+${formData.type === 'customers' ? '- Crescimento sustentável: 50-200 novos clientes/mês' : ''}
+
+RETORNE APENAS JSON puro (sem markdown):
+{
+  "suggestedName": "Nome sugerido para a meta (max 50 chars)",
+  "targetValue": número realista,
+  "currentValue": 0,
+  "deadline": "data sugerida no formato YYYY-MM-DD (${formData.period === 'monthly' ? '30 dias' : formData.period === 'quarterly' ? '90 dias' : '365 dias'})",
+  "reasoning": "Explicação breve em 1-2 frases"
+}`;
+
+        try {
+            const result = await askAI(prompt);
+            const cleanJson = result.replace(/```json/g, '').replace(/```/g, '').trim();
+            const suggestion = JSON.parse(cleanJson);
+
+            setFormData({
+                ...formData,
+                name: suggestion.suggestedName || formData.name,
+                targetValue: suggestion.targetValue || 0,
+                currentValue: suggestion.currentValue || 0,
+                deadline: suggestion.deadline || formData.deadline
+            });
+
+            if (suggestion.reasoning) {
+                alert(`💡 Sugestão da IA:\n\n${suggestion.reasoning}`);
+            }
+        } catch (e) {
+            console.error('Erro ao processar sugestão da IA:', e);
+            alert('Erro ao gerar sugestão. Tente novamente.');
+        } finally {
+            setIsAiLoading(false);
+        }
+    };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -113,8 +183,8 @@ const GoalModal: React.FC<GoalModalProps> = ({ isOpen, onClose, onSave, editingG
                                     type="button"
                                     onClick={() => setFormData({ ...formData, type: type.value as any })}
                                     className={`p-4 rounded-xl border-2 transition-all text-center ${formData.type === type.value
-                                            ? 'border-blue-500 bg-blue-50 shadow-md'
-                                            : 'border-gray-200 hover:border-gray-300'
+                                        ? 'border-blue-500 bg-blue-50 shadow-md'
+                                        : 'border-gray-200 hover:border-gray-300'
                                         }`}
                                 >
                                     <div className="text-3xl mb-1">{type.icon}</div>
@@ -124,6 +194,26 @@ const GoalModal: React.FC<GoalModalProps> = ({ isOpen, onClose, onSave, editingG
                             ))}
                         </div>
                     </div>
+
+                    {/* Botão de IA */}
+                    <button
+                        type="button"
+                        onClick={handleAiSuggest}
+                        disabled={isAiLoading || !formData.type}
+                        className="w-full p-4 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg transition flex items-center justify-center gap-2"
+                    >
+                        {isAiLoading ? (
+                            <>
+                                <Loader size={20} className="animate-spin" />
+                                Gerando Meta Inteligente...
+                            </>
+                        ) : (
+                            <>
+                                <Sparkles size={20} className="text-yellow-300" />
+                                🤖 Sugerir Meta Ideal com IA
+                            </>
+                        )}
+                    </button>
 
                     {/* Valor Alvo e Período */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
